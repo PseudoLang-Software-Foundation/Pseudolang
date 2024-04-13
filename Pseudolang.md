@@ -183,6 +183,13 @@ String (32 bit)
 
 Boolean
 
+## BuiltIn Functions
+`Substring("abcd", start, end)`
+Returns a string of characters from index `start` to index `end` of the given string
+
+`Concat("ab", "cd")`
+Returns a single string with the two given strings combined
+
 
 ## Outside of College Board - Extras
 
@@ -206,6 +213,14 @@ Prints the value of a, without a new line character.
 `IMPORT a`
 
 Imports a library (including functions & variables defined in that file) from a file.
+
+```
+CLASS className()
+{
+  ...procs
+}
+```
+Creates a class object
 
 ## Limitations
 
