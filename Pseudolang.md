@@ -222,6 +222,18 @@ CLASS className()
 ```
 Creates a class object
 
+`r"a"`
+Creates a raw string.
+
+`f"a{b}`
+Creates a formatted string, the string value of the variable is added to the string.
+
+`TOSTRING(a)`
+Converts an integer/float data type to a string.
+
+`TONUM(a)`
+Covnerts a string to an integer or a float.
+
 ## Limitations
 
 Since a lot of the syntax is text like COMMENT or TRUE, you may not set variables as such, and the interpreter will try to raise an error if it occurs.
