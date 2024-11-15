@@ -6,8 +6,6 @@ mod lexer;
 mod parser;
 
 use lexer::Lexer;
-
-// Add a struct to hold configuration
 struct Config {
     input_file: String,
     output_file: String,
@@ -44,7 +42,6 @@ fn main() {
         }
     };
 
-    // Add debug banner
     if config.debug {
         println!("\n=== Debug Mode Enabled ===\n");
     }
@@ -79,7 +76,7 @@ fn main() {
         Ok(ast) => {
             if config.debug {
                 println!("\n=== Parser Output ===");
-                println!("AST: {:#?}", ast); // Changed to pretty print
+                println!("AST: {:#?}", ast);
             }
             println!("Successfully parsed program");
 

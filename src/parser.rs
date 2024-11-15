@@ -128,7 +128,7 @@ impl Parser {
         let mut statements = Vec::new();
 
         while self.peek().is_some() {
-            Self::debug_print(debug, &format!("Current token: {:?}", self.peek())); // Added token debug
+            Self::debug_print(debug, &format!("Current token: {:?}", self.peek()));
             statements.push(self.parse_statement(debug)?);
         }
 
