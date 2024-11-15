@@ -16,6 +16,11 @@ pub enum AstNode {
     ListAccess(Box<AstNode>, Box<AstNode>),
     ListAssignment(Box<AstNode>, Box<AstNode>, Box<AstNode>),
 
+    // List operations
+    ListInsert(Box<AstNode>, Box<AstNode>, Box<AstNode>), // Added
+    ListAppend(Box<AstNode>, Box<AstNode>),               // Added
+    ListRemove(Box<AstNode>, Box<AstNode>),               // Added
+
     // Operations
     BinaryOp(Box<AstNode>, BinaryOperator, Box<AstNode>),
     UnaryOp(UnaryOperator, Box<AstNode>),
