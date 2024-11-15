@@ -77,20 +77,69 @@ fn main() {
             if config.debug {
                 println!("\n=== Parser Output ===");
                 println!("AST: {:#?}", ast);
+                println!("Successfully parsed program");
+                println!("\n=== Starting Execution ===");
             }
-            println!("Successfully parsed program");
 
-            let output = interpreter::run(ast);
-
-            match output {
+            println!("Executing program...");
+            match interpreter::run(ast) {
                 Ok(result) => {
-                    if let Err(error) = fs::write(&config.output_file, result) {
-                        eprintln!("Error writing to file {}: {}", config.output_file, error);
+                    println!("Program output:");
+                    println!("{}", result);
+
+                    // Add platform-specific handling
+                    #[cfg(target_os = "windows")]
+                    let output_file = if !config.output_file.ends_with(".exe") {
+                        format!("{}.exe", config.output_file)
+                    } else {
+                        config.output_file
+                    };
+
+                    #[cfg(not(target_os = "windows"))]
+                    let output_file = config.output_file;
+
+                    // Create a shell script wrapper for the output
+                    #[cfg(target_os = "windows")]
+                    let content = format!(
+                        "
+                        {}",
+                        result
+                            .lines()
+                            .map(|line| format!("echo {}", line.replace("\"", "\"\"")))
+                            .collect::<Vec<_>>()
+                            .join("\r\n")
+                    );
+
+                    #[cfg(not(target_os = "windows"))]
+                    let content = format!(
+                        "#!/bin/bash\n\
+                        {}",
+                        result
+                            .lines()
+                            .map(|line| format!("echo \"{}\"", line.replace("\"", "\\\"")))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+
+                    if let Err(error) = fs::write(&output_file, content) {
+                        eprintln!("Error writing to file {}: {}", output_file, error);
                         std::process::exit(1);
                     }
+
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if let Err(error) =
+                            fs::set_permissions(&output_file, fs::Permissions::from_mode(0o755))
+                        {
+                            eprintln!("Error setting permissions: {}", error);
+                            std::process::exit(1);
+                        }
+                    }
+
                     println!(
                         "Successfully executed program and wrote output to {}",
-                        config.output_file
+                        output_file
                     );
                 }
                 Err(err) => {

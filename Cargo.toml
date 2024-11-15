@@ -20,3 +20,4 @@ panic = "abort"
 
 [dependencies]
 cross="0.2.5"
+rand = "0.8.5"

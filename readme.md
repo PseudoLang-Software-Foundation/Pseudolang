@@ -46,9 +46,10 @@ We will be adding examples of how to use PseudoLang. Check back soon!
 - [ ] Web version
 - [ ] Installer
 - [ ] Library support (remote procedures, calls, etc)
+- [ ] Casting and more types (ex: doubles, n-dimensional arrays)
+- [ ] Console input
 - [ ] Raise error
 - [ ] Networking
-- [ ] Have source in other languages than rust
 - [ ] Create release build
 - [ ] Man page and and help menu on simple command run
 - [ ] Examples

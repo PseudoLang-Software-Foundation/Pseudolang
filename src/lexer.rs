@@ -148,6 +148,25 @@ impl<'a> Lexer<'a> {
         self.pos += 1;
 
         match next_char {
+            // Add handling for C-style comments
+            '/' => {
+                if let Some(&'/') = self.chars.peek() {
+                    // Skip the second '/'
+                    self.chars.next();
+                    self.pos += 1;
+
+                    // Skip the rest of the line
+                    while let Some(c) = self.chars.next() {
+                        self.pos += 1;
+                        if c == '\n' {
+                            return self.next_token();
+                        }
+                    }
+                    self.next_token()
+                } else {
+                    Some(Token::Divide)
+                }
+            }
             // Change whitespace handling to preserve newlines
             '\n' => Some(Token::Newline),
             ' ' | '\t' | '\r' => self.next_token(),
@@ -319,32 +338,33 @@ impl<'a> Lexer<'a> {
                     // Make sure MOD is recognized before general identifiers
                     "MOD" => Some(Token::Modulo),
                     "DISPLAY" => {
-                        // Handle DISPLAY("hi") case
+                        // Skip any whitespace
                         while let Some(&c) = self.chars.peek() {
                             if c.is_whitespace() {
                                 self.chars.next();
                                 self.pos += 1;
                                 continue;
                             }
-                            if c == '(' {
-                                self.chars.next();
-                                self.pos += 1;
-                                if let Some(Token::String(s)) = self.next_token() {
-                                    while let Some(&c) = self.chars.peek() {
-                                        if c == ')' {
-                                            self.chars.next();
-                                            self.pos += 1;
-                                            break;
-                                        }
-                                        self.chars.next();
-                                        self.pos += 1;
-                                    }
-                                    return Some(Token::Display(Some(Box::new(Token::String(s)))));
-                                }
-                            }
                             break;
                         }
-                        Some(Token::Display(None))
+
+                        // Check if there's a string literal immediately after DISPLAY
+                        if let Some(&'"') = self.chars.peek() {
+                            self.chars.next(); // consume quote
+                            self.pos += 1;
+                            let mut string = String::new();
+                            while let Some(c) = self.chars.next() {
+                                self.pos += 1;
+                                if c == '"' {
+                                    break;
+                                }
+                                string.push(c);
+                            }
+                            Some(Token::Display(Some(Box::new(Token::String(string)))))
+                        } else {
+                            // Otherwise just return Display token
+                            Some(Token::Display(None))
+                        }
                     }
                     "INPUT" => Some(Token::Input),
                     "IF" => Some(Token::If),
