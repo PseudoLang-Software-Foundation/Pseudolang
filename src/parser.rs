@@ -1,7 +1,7 @@
 use crate::lexer::Token;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Added this line
+#[allow(dead_code)]
 pub enum AstNode {
     // Literals
     Integer(i32),
@@ -54,13 +54,12 @@ pub enum AstNode {
     Comment(String),
     Import(String),
 
-    // New additions
     RawString(String),
     FormattedString(String, Vec<String>),
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Added this for BinaryOperator too
+#[allow(dead_code)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -94,6 +93,12 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
+    fn debug_print(debug: bool, message: &str) {
+        if debug {
+            eprintln!("\x1b[33m[PARSER DEBUG]\x1b[0m {}", message); // Changed format and color
+        }
+    }
+
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.current)
     }
@@ -118,22 +123,44 @@ impl Parser {
         false
     }
 
-    fn parse_program(&mut self) -> Result<AstNode, String> {
+    fn parse_program(&mut self, debug: bool) -> Result<AstNode, String> {
+        Self::debug_print(debug, "Starting program parse");
         let mut statements = Vec::new();
+
         while self.peek().is_some() {
-            statements.push(self.parse_statement()?);
+            Self::debug_print(debug, &format!("Current token: {:?}", self.peek())); // Added token debug
+            statements.push(self.parse_statement(debug)?);
         }
+
+        Self::debug_print(
+            debug,
+            &format!(
+                "Finished program parse with {} statements",
+                statements.len()
+            ),
+        ); // Added count
         Ok(AstNode::Program(statements))
     }
 
-    fn parse_statement(&mut self) -> Result<AstNode, String> {
-        println!("Parsing statement, current token: {:?}", self.peek());
+    fn parse_statement(&mut self, debug: bool) -> Result<AstNode, String> {
+        Self::debug_print(
+            debug,
+            &format!("Parsing statement at position {}", self.current),
+        );
 
         match self.peek() {
+            None => {
+                Self::debug_print(debug, "End of input reached");
+                Ok(AstNode::Block(Vec::new()))
+            }
             Some(Token::Newline) => {
-                println!("Found newline, skipping");
+                Self::debug_print(debug, "Found newline, skipping");
                 self.advance();
-                return self.parse_statement();
+                self.parse_statement(debug)
+            }
+            Some(Token::CloseBrace) => {
+                // We've reached the end of a block, don't consume the brace
+                Ok(AstNode::Block(Vec::new()))
             }
             Some(Token::Identifier(_)) => {
                 // First parse the identifier
@@ -146,7 +173,7 @@ impl Parser {
                 match self.peek() {
                     Some(Token::Assign) => {
                         self.advance(); // consume the Assign token
-                        let value = self.parse_expression()?;
+                        let value = self.parse_expression(debug)?;
                         Ok(AstNode::Assignment(
                             Box::new(AstNode::Identifier(identifier)),
                             Box::new(value),
@@ -155,14 +182,14 @@ impl Parser {
                     Some(Token::OpenBracket) => {
                         // Handle list access/assignment
                         self.advance(); // consume '['
-                        let index = self.parse_expression()?;
+                        let index = self.parse_expression(debug)?;
                         if !self.match_token(&Token::CloseBracket) {
                             return Err("Expected ']'".to_string());
                         }
 
                         if self.match_token(&Token::Assign) {
                             // List assignment
-                            let value = self.parse_expression()?;
+                            let value = self.parse_expression(debug)?;
                             Ok(AstNode::ListAssignment(
                                 Box::new(AstNode::Identifier(identifier)),
                                 Box::new(index),
@@ -186,7 +213,7 @@ impl Parser {
                                     return Err("Expected comma between arguments".to_string());
                                 }
                             }
-                            args.push(self.parse_expression()?);
+                            args.push(self.parse_expression(debug)?);
                         }
                         Ok(AstNode::ProcedureCall(identifier, args))
                     }
@@ -194,42 +221,45 @@ impl Parser {
                 }
             }
             Some(_) if self.is_expression_start() => {
-                println!("Starting expression parse");
-                self.parse_expression()
+                Self::debug_print(debug, "Starting expression parse");
+                self.parse_expression(debug)
             }
             Some(Token::If) => {
-                println!("Starting if statement parse");
-                self.parse_if()
+                Self::debug_print(debug, "Starting if statement parse");
+                self.parse_if(debug)
             }
             Some(Token::Procedure) => {
-                println!("Starting procedure parse");
-                self.parse_procedure()
+                Self::debug_print(debug, "Starting procedure parse");
+                self.parse_procedure(debug)
             }
             // ...rest of existing match cases...
-            Some(Token::ListInsert) => self.parse_list_insert(),
-            Some(Token::ListAppend) => self.parse_list_append(),
-            Some(Token::ListRemove) => self.parse_list_remove(),
-            Some(Token::ListLength) => self.parse_list_length(),
-            Some(Token::Random) => self.parse_random(),
-            Some(Token::Substring) => self.parse_substring(),
-            Some(Token::Concat) => self.parse_concat(),
-            Some(Token::ToString) => self.parse_to_string(),
-            Some(Token::ToNum) => self.parse_to_num(),
-            Some(Token::If) => self.parse_if(),
-            Some(Token::Repeat) => self.parse_repeat(),
-            Some(Token::For) => self.parse_foreach(),
-            Some(Token::Class) => self.parse_class(),
-            Some(Token::Procedure) => self.parse_procedure(),
-            Some(Token::Display(_)) => self.parse_display(),
-            Some(Token::DisplayInline) => self.parse_display_inline(),
-            Some(Token::Comment) => self.parse_comment(),
-            Some(Token::Import) => self.parse_import(),
+            Some(Token::ListInsert) => self.parse_list_insert(debug),
+            Some(Token::ListAppend) => self.parse_list_append(debug),
+            Some(Token::ListRemove) => self.parse_list_remove(debug),
+            Some(Token::ListLength) => self.parse_list_length(debug),
+            Some(Token::Random) => self.parse_random(debug),
+            Some(Token::Substring) => self.parse_substring(debug),
+            Some(Token::Concat) => self.parse_concat(debug),
+            Some(Token::ToString) => self.parse_to_string(debug),
+            Some(Token::ToNum) => self.parse_to_num(debug),
+            Some(Token::If) => self.parse_if(debug),
+            Some(Token::Repeat) => {
+                Self::debug_print(debug, "Starting repeat parse");
+                self.parse_repeat(debug)
+            }
+            Some(Token::For) => self.parse_foreach(debug),
+            Some(Token::Class) => self.parse_class(debug),
+            Some(Token::Procedure) => self.parse_procedure(debug),
+            Some(Token::Display(_)) => self.parse_display(debug),
+            Some(Token::DisplayInline) => self.parse_display_inline(debug),
+            Some(Token::Comment) => self.parse_comment(debug),
+            Some(Token::Import) => self.parse_import(debug),
             Some(Token::Return) => {
                 self.advance(); // consume RETURN
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after RETURN".to_string());
                 }
-                let expr = self.parse_expression()?;
+                let expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
                     return Err("Expected ')' after return expression".to_string());
                 }
@@ -246,7 +276,10 @@ impl Parser {
                 Ok(AstNode::Input)
             }
             _ => {
-                println!("Unexpected token in statement: {:?}", self.peek());
+                Self::debug_print(
+                    debug,
+                    &format!("Unexpected token in statement: {:?}", self.peek()),
+                );
                 Err("Unexpected token in statement".to_string())
             }
         }
@@ -265,7 +298,7 @@ impl Parser {
             | Some(Token::Not)
             | Some(Token::Minus)
             | Some(Token::Plus)
-            | Some(Token::ListLength) // Add this line
+            | Some(Token::ListLength)
             | Some(Token::GreaterThan)
             | Some(Token::GreaterThanOrEqual)
             | Some(Token::LessThan)
@@ -276,23 +309,23 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<AstNode, String> {
-        self.parse_logical()
+    fn parse_expression(&mut self, debug: bool) -> Result<AstNode, String> {
+        self.parse_logical(debug)
     }
 
-    fn parse_logical(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.parse_equality()?;
+    fn parse_logical(&mut self, debug: bool) -> Result<AstNode, String> {
+        let mut expr = self.parse_equality(debug)?;
 
         while let Some(token) = self.peek() {
             match token {
                 Token::And => {
                     self.advance();
-                    let right = self.parse_equality()?;
+                    let right = self.parse_equality(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::And, Box::new(right));
                 }
                 Token::Or => {
                     self.advance();
-                    let right = self.parse_equality()?;
+                    let right = self.parse_equality(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Or, Box::new(right));
                 }
                 _ => break,
@@ -301,19 +334,19 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_equality(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.parse_comparison()?;
+    fn parse_equality(&mut self, debug: bool) -> Result<AstNode, String> {
+        let mut expr = self.parse_comparison(debug)?;
 
         while let Some(token) = self.peek() {
             match token {
                 Token::Equal => {
                     self.advance();
-                    let right = self.parse_comparison()?;
+                    let right = self.parse_comparison(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Eq, Box::new(right));
                 }
                 Token::NotEqual => {
                     self.advance();
-                    let right = self.parse_comparison()?;
+                    let right = self.parse_comparison(debug)?;
                     expr =
                         AstNode::BinaryOp(Box::new(expr), BinaryOperator::NotEq, Box::new(right));
                 }
@@ -323,29 +356,29 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_comparison(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.parse_term()?;
+    fn parse_comparison(&mut self, debug: bool) -> Result<AstNode, String> {
+        let mut expr = self.parse_term(debug)?;
 
         while let Some(token) = self.peek() {
             match token {
                 Token::GreaterThan => {
                     self.advance();
-                    let right = self.parse_term()?;
+                    let right = self.parse_term(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Gt, Box::new(right));
                 }
                 Token::GreaterThanOrEqual => {
                     self.advance();
-                    let right = self.parse_term()?;
+                    let right = self.parse_term(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::GtEq, Box::new(right));
                 }
                 Token::LessThan => {
                     self.advance();
-                    let right = self.parse_term()?;
+                    let right = self.parse_term(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Lt, Box::new(right));
                 }
                 Token::LessThanOrEqual => {
                     self.advance();
-                    let right = self.parse_term()?;
+                    let right = self.parse_term(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::LtEq, Box::new(right));
                 }
                 _ => break,
@@ -354,24 +387,24 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_term(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.parse_factor()?;
+    fn parse_term(&mut self, debug: bool) -> Result<AstNode, String> {
+        let mut expr = self.parse_factor(debug)?;
 
         while let Some(token) = self.peek() {
             match token {
                 Token::Multiply => {
                     self.advance();
-                    let right = self.parse_factor()?;
+                    let right = self.parse_factor(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Mul, Box::new(right));
                 }
                 Token::Divide => {
                     self.advance();
-                    let right = self.parse_factor()?;
+                    let right = self.parse_factor(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Div, Box::new(right));
                 }
                 Token::Modulo => {
                     self.advance();
-                    let right = self.parse_factor()?;
+                    let right = self.parse_factor(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Mod, Box::new(right));
                 }
                 _ => break,
@@ -380,19 +413,19 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_factor(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.parse_unary()?;
+    fn parse_factor(&mut self, debug: bool) -> Result<AstNode, String> {
+        let mut expr = self.parse_unary(debug)?;
 
         while let Some(token) = self.peek() {
             match token {
                 Token::Plus => {
                     self.advance();
-                    let right = self.parse_unary()?;
+                    let right = self.parse_unary(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Add, Box::new(right));
                 }
                 Token::Minus => {
                     self.advance();
-                    let right = self.parse_unary()?;
+                    let right = self.parse_unary(debug)?;
                     expr = AstNode::BinaryOp(Box::new(expr), BinaryOperator::Sub, Box::new(right));
                 }
                 _ => break,
@@ -401,34 +434,34 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_unary(&mut self) -> Result<AstNode, String> {
+    fn parse_unary(&mut self, debug: bool) -> Result<AstNode, String> {
         if let Some(token) = self.peek() {
             match token {
                 Token::Not => {
                     self.advance();
-                    let expr = self.parse_unary()?;
+                    let expr = self.parse_unary(debug)?;
                     Ok(AstNode::UnaryOp(UnaryOperator::Not, Box::new(expr)))
                 }
                 Token::Minus => {
                     self.advance();
-                    let expr = self.parse_unary()?;
+                    let expr = self.parse_unary(debug)?;
                     Ok(AstNode::UnaryOp(UnaryOperator::Neg, Box::new(expr)))
                 }
-                _ => self.parse_primary(),
+                _ => self.parse_primary(debug),
             }
         } else {
             Err("Unexpected end of input".to_string())
         }
     }
 
-    fn parse_primary(&mut self) -> Result<AstNode, String> {
+    fn parse_primary(&mut self, debug: bool) -> Result<AstNode, String> {
         match self.peek() {
             Some(Token::ListLength) => {
                 self.advance(); // consume LENGTH
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after LENGTH".to_string());
                 }
-                let list = self.parse_expression()?;
+                let list = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
                     return Err("Expected ')'".to_string());
                 }
@@ -442,7 +475,7 @@ impl Parser {
 
                 // Check for list access after identifier
                 if self.match_token(&Token::OpenBracket) {
-                    let index = self.parse_expression()?;
+                    let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
                         return Err("Expected ']' after index".to_string());
                     }
@@ -463,29 +496,29 @@ impl Parser {
                 Some(Token::Boolean(b)) => Ok(AstNode::Boolean(b)),
                 Some(Token::Identifier(name)) => Ok(AstNode::Identifier(name)),
                 Some(Token::OpenParen) => {
-                    let expr = self.parse_expression()?;
+                    let expr = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseParen) {
                         return Err("Expected ')' after expression".to_string());
                     }
                     Ok(expr)
                 }
-                Some(Token::OpenBracket) => self.parse_list(),
+                Some(Token::OpenBracket) => self.parse_list(debug),
                 _ => Err("Unexpected token in expression".to_string()),
             },
         }
     }
 
-    fn parse_class(&mut self) -> Result<AstNode, String> {
+    fn parse_class(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume CLASS
         let name = match self.advance() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected class name".to_string()),
         };
-        let body = self.parse_block()?;
+        let body = self.parse_block(debug)?;
         Ok(AstNode::ClassDecl(name, Box::new(body)))
     }
 
-    fn parse_foreach(&mut self) -> Result<AstNode, String> {
+    fn parse_foreach(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume FOR
         if !self.match_token(&Token::Each) {
             return Err("Expected EACH after FOR".to_string());
@@ -497,62 +530,69 @@ impl Parser {
         if !self.match_token(&Token::In) {
             return Err("Expected IN after identifier".to_string());
         }
-        let list = self.parse_expression()?;
-        let body = self.parse_block()?;
+        let list = self.parse_expression(debug)?;
+        let body = self.parse_block(debug)?;
         Ok(AstNode::ForEach(var_name, Box::new(list), Box::new(body)))
     }
 
-    fn parse_block(&mut self) -> Result<AstNode, String> {
-        println!("Parsing block, current token: {:?}", self.peek());
+    fn parse_block(&mut self, debug: bool) -> Result<AstNode, String> {
+        Self::debug_print(
+            debug,
+            &format!("Parsing block, current token: {:?}", self.peek()),
+        );
 
         // Skip any newlines before the opening brace
         while let Some(Token::Newline) = self.peek() {
-            println!("Skipping newline before block");
+            Self::debug_print(debug, "Skipping newline before block");
             self.advance();
         }
 
         match self.peek() {
             Some(Token::OpenBrace) => {
-                println!("Found opening brace");
+                Self::debug_print(debug, "Found opening brace");
                 self.advance();
 
                 // Skip any newlines after opening brace
                 while let Some(Token::Newline) = self.peek() {
-                    println!("Skipping newline after opening brace");
+                    Self::debug_print(debug, "Skipping newline after opening brace");
                     self.advance();
                 }
 
                 let mut statements = Vec::new();
                 while let Some(token) = self.peek() {
                     if token == &Token::CloseBrace {
-                        println!("Found closing brace");
+                        Self::debug_print(debug, "Found closing brace");
                         break;
                     }
-                    println!("Parsing statement in block");
-                    statements.push(self.parse_statement()?);
 
+                    // Parse the next statement
+                    let stmt = self.parse_statement(debug)?;
+
+                    // Only add non-empty blocks to statements
+                    match stmt {
+                        AstNode::Block(v) if v.is_empty() => {}
+                        _ => statements.push(stmt),
+                    }
+
+                    // Skip any newlines between statements
                     while let Some(Token::Newline) = self.peek() {
-                        println!("Skipping newline between statements");
+                        Self::debug_print(debug, "Skipping newline between statements");
                         self.advance();
                     }
                 }
 
-                println!("Expecting closing brace, found: {:?}", self.peek());
                 if !self.match_token(&Token::CloseBrace) {
-                    return Err("Expected '}' after block".to_string());
+                    return Err("Expected '}' at end of block".to_string());
                 }
 
-                println!("Block parsing complete");
+                Self::debug_print(debug, "Block parsing complete");
                 Ok(AstNode::Block(statements))
             }
-            _ => {
-                println!("Failed to find opening brace, found: {:?}", self.peek());
-                Err("Expected '{' before block".to_string())
-            }
+            _ => Err("Expected '{' to start block".to_string()),
         }
     }
 
-    fn parse_procedure(&mut self) -> Result<AstNode, String> {
+    fn parse_procedure(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume PROCEDURE
         let name = match self.advance() {
             Some(Token::Identifier(name)) => name,
@@ -579,39 +619,60 @@ impl Parser {
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')' after parameters".to_string());
         }
-        let body = self.parse_block()?;
+        let body = self.parse_block(debug)?;
         Ok(AstNode::ProcedureDecl(name, params, Box::new(body)))
     }
 
-    fn parse_display(&mut self) -> Result<AstNode, String> {
-        self.advance(); // consume DISPLAY
-        if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after DISPLAY".to_string());
+    fn parse_display(&mut self, debug: bool) -> Result<AstNode, String> {
+        match self.advance() {
+            // consume DISPLAY
+            Some(Token::Display(Some(boxed_token))) => {
+                // Handle case where lexer already captured the string
+                match *boxed_token {
+                    Token::String(s) => Ok(AstNode::Display(Some(Box::new(AstNode::String(s))))),
+                    _ => Err("Expected string literal after DISPLAY".to_string()),
+                }
+            }
+            Some(Token::Display(None)) => {
+                // Handle optional parentheses case
+                if self.match_token(&Token::OpenParen) {
+                    let expr = if self.peek() == Some(&Token::CloseParen) {
+                        None
+                    } else {
+                        Some(Box::new(self.parse_expression(debug)?))
+                    };
+                    if !self.match_token(&Token::CloseParen) {
+                        return Err("Expected ')' after expression".to_string());
+                    }
+                    Ok(AstNode::Display(expr))
+                } else {
+                    // Handle case without parentheses
+                    if self.is_expression_start() {
+                        Ok(AstNode::Display(Some(Box::new(
+                            self.parse_expression(debug)?,
+                        ))))
+                    } else {
+                        Ok(AstNode::Display(None))
+                    }
+                }
+            }
+            _ => Err("Expected DISPLAY token".to_string()),
         }
-        let expr = if self.peek() == Some(&Token::CloseParen) {
-            None
-        } else {
-            Some(Box::new(self.parse_expression()?))
-        };
-        if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')' after expression".to_string());
-        }
-        Ok(AstNode::Display(expr))
     }
 
-    fn parse_display_inline(&mut self) -> Result<AstNode, String> {
+    fn parse_display_inline(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume DISPLAYINLINE
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after DISPLAYINLINE".to_string());
         }
-        let expr = self.parse_expression()?;
+        let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')' after expression".to_string());
         }
         Ok(AstNode::DisplayInline(Box::new(expr)))
     }
 
-    fn parse_comment(&mut self) -> Result<AstNode, String> {
+    fn parse_comment(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume COMMENT
         match self.advance() {
             Some(Token::String(text)) => Ok(AstNode::Comment(text)),
@@ -619,7 +680,7 @@ impl Parser {
         }
     }
 
-    fn parse_import(&mut self) -> Result<AstNode, String> {
+    fn parse_import(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume IMPORT
         match self.advance() {
             Some(Token::String(path)) => Ok(AstNode::Import(path)),
@@ -627,7 +688,7 @@ impl Parser {
         }
     }
 
-    fn parse_assignment_or_call(&mut self) -> Result<AstNode, String> {
+    fn parse_assignment_or_call(&mut self, debug: bool) -> Result<AstNode, String> {
         let identifier = match self.advance() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected identifier".to_string()),
@@ -636,12 +697,12 @@ impl Parser {
         match self.peek() {
             Some(Token::OpenBracket) => {
                 self.advance();
-                let index = self.parse_expression()?;
+                let index = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseBracket) {
                     return Err("Expected ']'".to_string());
                 }
                 if self.match_token(&Token::Assign) {
-                    let value = self.parse_expression()?;
+                    let value = self.parse_expression(debug)?;
                     Ok(AstNode::ListAssignment(
                         Box::new(AstNode::Identifier(identifier)),
                         Box::new(index),
@@ -656,7 +717,7 @@ impl Parser {
             }
             Some(Token::Assign) => {
                 self.advance();
-                let value = self.parse_expression()?;
+                let value = self.parse_expression(debug)?;
                 Ok(AstNode::Assignment(
                     Box::new(AstNode::Identifier(identifier)),
                     Box::new(value),
@@ -674,7 +735,7 @@ impl Parser {
                             return Err("Expected comma between arguments".to_string());
                         }
                     }
-                    args.push(self.parse_expression()?);
+                    args.push(self.parse_expression(debug)?);
                 }
                 if !self.match_token(&Token::CloseParen) {
                     return Err("Expected ')'".to_string());
@@ -700,7 +761,7 @@ impl Parser {
         }
     }
 
-    fn parse_list(&mut self) -> Result<AstNode, String> {
+    fn parse_list(&mut self, debug: bool) -> Result<AstNode, String> {
         let mut elements = Vec::new();
         while let Some(token) = self.peek() {
             if token == &Token::CloseBracket {
@@ -711,7 +772,7 @@ impl Parser {
                     return Err("Expected comma between list elements".to_string());
                 }
             }
-            elements.push(self.parse_expression()?);
+            elements.push(self.parse_expression(debug)?);
         }
         if !self.match_token(&Token::CloseBracket) {
             return Err("Expected ']'".to_string());
@@ -719,60 +780,60 @@ impl Parser {
         Ok(AstNode::List(elements))
     }
 
-    fn parse_list_length(&mut self) -> Result<AstNode, String> {
+    fn parse_list_length(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume LENGTH
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after LENGTH".to_string());
         }
-        let list = self.parse_expression()?;
+        let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::Length(Box::new(list)))
     }
 
-    fn parse_list_remove(&mut self) -> Result<AstNode, String> {
+    fn parse_list_remove(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume REMOVE
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after REMOVE".to_string());
         }
-        let list = self.parse_expression()?;
+        let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after list".to_string());
         }
-        let index = self.parse_expression()?;
+        let index = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::Remove(Box::new(list), Box::new(index)))
     }
 
-    fn parse_list_append(&mut self) -> Result<AstNode, String> {
+    fn parse_list_append(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume APPEND
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after APPEND".to_string());
         }
-        let list = self.parse_expression()?;
+        let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after list".to_string());
         }
-        let value = self.parse_expression()?;
+        let value = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::Append(Box::new(list), Box::new(value)))
     }
 
-    fn parse_if(&mut self) -> Result<AstNode, String> {
+    fn parse_if(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume IF
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after IF".to_string());
         }
-        let condition = self.parse_expression()?;
+        let condition = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')' after condition".to_string());
         }
-        let then_branch = self.parse_block()?;
+        let then_branch = self.parse_block(debug)?;
 
         // Skip any newlines after the 'then' block
         while let Some(Token::Newline) = self.peek() {
@@ -784,10 +845,10 @@ impl Parser {
             // Check if this is an ELSE IF
             if self.peek() == Some(&Token::If) {
                 // Parse it as another IF statement
-                Some(Box::new(self.parse_if()?))
+                Some(Box::new(self.parse_if(debug)?))
             } else {
                 // Regular ELSE block
-                let else_block = self.parse_block()?;
+                let else_block = self.parse_block(debug)?;
                 Some(Box::new(else_block))
             }
         } else {
@@ -801,13 +862,9 @@ impl Parser {
         ))
     }
 
-    fn parse_repeat(&mut self) -> Result<AstNode, String> {
+    fn parse_repeat(&mut self, debug: bool) -> Result<AstNode, String> {
+        Self::debug_print(debug, "Starting repeat parse");
         self.advance(); // consume REPEAT
-
-        // Skip any newlines after REPEAT
-        while let Some(Token::Newline) = self.peek() {
-            self.advance();
-        }
 
         match self.peek() {
             Some(Token::Until) => {
@@ -815,44 +872,44 @@ impl Parser {
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after REPEAT UNTIL".to_string());
                 }
-                let condition = self.parse_expression()?;
+                let condition = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
                     return Err("Expected ')' after condition".to_string());
                 }
+
                 // Skip any newlines before the block
                 while let Some(Token::Newline) = self.peek() {
                     self.advance();
                 }
-                let body = self.parse_block()?;
-                // RepeatUntil takes the body first, then the condition
+
+                let body = self.parse_block(debug)?;
                 Ok(AstNode::RepeatUntil(Box::new(body), Box::new(condition)))
             }
-            Some(_) => {
-                let times = self.parse_expression()?;
+            _ => {
+                let times = self.parse_expression(debug)?;
                 if !self.match_token(&Token::Times) {
                     return Err("Expected TIMES after repeat count".to_string());
                 }
-                let body = self.parse_block()?;
+                let body = self.parse_block(debug)?;
                 Ok(AstNode::RepeatTimes(Box::new(times), Box::new(body)))
             }
-            None => Err("Unexpected end of input after REPEAT".to_string()),
         }
     }
 
-    fn parse_list_insert(&mut self) -> Result<AstNode, String> {
+    fn parse_list_insert(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume INSERT
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after INSERT".to_string());
         }
-        let list = self.parse_expression()?;
+        let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after list".to_string());
         }
-        let index = self.parse_expression()?;
+        let index = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after index".to_string());
         }
-        let value = self.parse_expression()?;
+        let value = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
@@ -863,36 +920,36 @@ impl Parser {
         ))
     }
 
-    fn parse_random(&mut self) -> Result<AstNode, String> {
+    fn parse_random(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume RANDOM
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after RANDOM".to_string());
         }
-        let min = self.parse_expression()?;
+        let min = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after min value".to_string());
         }
-        let max = self.parse_expression()?;
+        let max = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::Random(Box::new(min), Box::new(max)))
     }
 
-    fn parse_substring(&mut self) -> Result<AstNode, String> {
+    fn parse_substring(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume SUBSTRING
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after SUBSTRING".to_string());
         }
-        let string = self.parse_expression()?;
+        let string = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after string".to_string());
         }
-        let start = self.parse_expression()?;
+        let start = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after start index".to_string());
         }
-        let end = self.parse_expression()?;
+        let end = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
@@ -903,40 +960,40 @@ impl Parser {
         ))
     }
 
-    fn parse_concat(&mut self) -> Result<AstNode, String> {
+    fn parse_concat(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume CONCAT
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after CONCAT".to_string());
         }
-        let str1 = self.parse_expression()?;
+        let str1 = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
             return Err("Expected comma after first string".to_string());
         }
-        let str2 = self.parse_expression()?;
+        let str2 = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::Concat(Box::new(str1), Box::new(str2)))
     }
 
-    fn parse_to_string(&mut self) -> Result<AstNode, String> {
+    fn parse_to_string(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume TOSTRING
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after TOSTRING".to_string());
         }
-        let expr = self.parse_expression()?;
+        let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
         Ok(AstNode::ToString(Box::new(expr)))
     }
 
-    fn parse_to_num(&mut self) -> Result<AstNode, String> {
+    fn parse_to_num(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance(); // consume TONUM
         if !self.match_token(&Token::OpenParen) {
             return Err("Expected '(' after TONUM".to_string());
         }
-        let expr = self.parse_expression()?;
+        let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
             return Err("Expected ')'".to_string());
         }
@@ -944,7 +1001,7 @@ impl Parser {
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<AstNode, String> {
+pub fn parse(tokens: Vec<Token>, debug: bool) -> Result<AstNode, String> {
     let mut parser = Parser::new(tokens);
-    parser.parse_program()
+    parser.parse_program(debug)
 }
