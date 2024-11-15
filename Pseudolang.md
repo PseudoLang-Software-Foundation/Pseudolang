@@ -46,7 +46,7 @@ Generates and returns a random integer from a to b, including a and b. Each resu
 
 `a <= b`
 
-The relational operators =, !=, >, <, >=, and <= are used to test the relationship between two variables, expressions, or values. A comparison using relational operators evaluates to a Boolean value.
+The relational operators =, NOT=, >, <, >=, and <= are used to test the relationship between two variables, expressions, or values. A comparison using relational operators evaluates to a Boolean value.
 
 `a AND b`
 
@@ -225,7 +225,7 @@ Creates a class object
 `r"a"`
 Creates a raw string.
 
-`f"a{b}`
+`f"a{b}"`
 Creates a formatted string, the string value of the variable is added to the string.
 
 `TOSTRING(a)`
