@@ -1,26 +1,4 @@
-/*
-TODO:
-1. sometimes, unknown tokens cause the rest of the program to not be recognized, outputting []
-also make it so that unknown tokens are printed as themselves with Identifier
-EX: a < prints [] instead of [Identifier("a"), LessThan]
-< DISPLAY aaa prints [LessThan, DISPLAY] instead of [LessThan, DISPLAY, Identifier("aaa")]
-a < prints [] instead of [Identifier("a"), LessThan]
-IMPORTANT: If the token is not recognized, it should only be an identifier if before/after assignment, in a parameter, or in a list, this logic should be in the parser.
-
-2. Also, strings are not recognized, anything in double quotes should be a string
-
-3. Parameters DISPLAY("hi") should work by having tokens in between parentheses, so DISPLAY("hi") would be [DISPLAY(String("hi"))]
-Current it prints [Display, Unknown, Unknown, Identifier("hi"), Unknown, Unknown] instead of [Display(String("hi"))]
-
-4. List lexing: Ex: ["1", 1, 0.1, true] should be [ListCreate(String("1"), Integer(1), Float(0.1), Boolean(true))]
-
-5. Comment lexing: Ex: COMMENT asdasd should be [Comment], and anything after on the same line should be ignored.
-For comment blocks, remove everything in between the commentblock types.
-
-6. Raw strings r"asd", and multiline strings with """asd""" along with formatted strings f"asd {var}".
-*/
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Token {
     Unknown,
@@ -28,7 +6,9 @@ pub enum Token {
 
     // Assignment, Display, Input
     Assignment,
-    Display,
+    Assign,
+    Display(Option<Box<Token>>), // For DISPLAY("hi") -> Display(Some(Box::new(String("hi"))))
+    DisplayInline,
     Input,
 
     // Arithmetic Operators
@@ -54,9 +34,11 @@ pub enum Token {
     Else,
     Repeat,
     RepeatUntil,
+    Until,
+    Times, // For REPEAT 5 TIMES -> Repeat(5)
 
     // List operations
-    ListCreate,
+    ListCreate(Vec<Token>), // For ["1", 1] -> ListCreate(vec![String("1"), Integer(1)]), unsure about this for the future
     ListAssign,
     ListAccess,
     ListInsert,
@@ -73,123 +55,332 @@ pub enum Token {
     Integer(i32),
     Float(f32),
     String(String),
+    RawString(String),
+    MultilineString(String),
+    FormattedString(String, Vec<String>),
     Boolean(bool),
 
     // Comments
     Comment,
     CommentBlock,
 
-    // Outside of AP
-    DisplayInline,
+    // Special chars
+    OpenParen,
+    CloseParen,
+    OpenBracket,
+    CloseBracket,
+    Comma,
+    Indent,
+    Dedent,
+    Newline,
+    OpenBrace,
+    CloseBrace,
+
+    // Miscellaneous Operations
+    Class,
+    ToString,
+    ToNum,
+    For,
+    Each,
+    In,
+    Substring,
+    Concat,
+    Import,
+
+    True,
+    False,
+    Random,
 }
 
 pub struct Lexer<'a> {
-    chars: std::str::Chars<'a>,
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+    input: &'a str,
+    pos: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
-        Lexer { chars: input.chars() }
+        Lexer {
+            chars: input.chars().peekable(),
+            input,
+            pos: 0,
+        }
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         while let Some(token) = self.next_token() {
-            tokens.push(token);
+            match token {
+                Token::Comment => {
+                    // Skip rest of line for comments
+                    while let Some(c) = self.chars.next() {
+                        if c == '\n' {
+                            break;
+                        }
+                    }
+                }
+                Token::CommentBlock => {
+                    let mut depth = 1;
+                    while depth > 0 {
+                        match self.chars.next() {
+                            Some('C') => {
+                                let block = self.input[self.pos..].starts_with("COMMENTBLOCK");
+                                if block {
+                                    depth -= 1;
+                                    for _ in 0..11 {
+                                        self.chars.next();
+                                    }
+                                }
+                            }
+                            Some(_) => {}
+                            None => break,
+                        }
+                    }
+                }
+                _ => tokens.push(token),
+            }
         }
         tokens
     }
 
     fn next_token(&mut self) -> Option<Token> {
         let next_char = self.chars.next()?;
-    
-        if next_char.is_whitespace() {
-            return self.next_token();
-        }
-    
+        self.pos += 1;
+
         match next_char {
-            '"' => {
-                let mut string = String::new();
-                while let Some(next_char) = self.chars.clone().next() {
-                    if next_char != '"' {
-                        string.push(next_char);
-                        self.chars.next();
-                    } else {
-                        self.chars.next();
-                        break;
-                    }
-                }
-                Some(Token::String(string))
-            },
-            '(' => {
-                let mut params = Vec::new();
-                while let Some(next_char) = self.chars.clone().next() {
-                    if next_char != ')' {
-                        if let Some(token) = self.next_token() {
-                            params.push(token);
-                        }
-                    } else {
-                        self.chars.next();
-                        break;
-                    }
-                }
-                Some(Token::Parameters(params))
-            },
+            // Change whitespace handling to preserve newlines
+            '\n' => Some(Token::Newline),
+            ' ' | '\t' | '\r' => self.next_token(),
+            '{' => Some(Token::OpenBrace),
+            '}' => Some(Token::CloseBrace),
             '=' => Some(Token::Equal),
-            '>' => Some(Token::GreaterThan),
-            '<' => {
-                if let Some('-') = self.chars.clone().next() {
+            '>' => {
+                if self.chars.peek() == Some(&'=') {
                     self.chars.next();
-                    Some(Token::Assignment)
+                    self.pos += 1;
+                    Some(Token::GreaterThanOrEqual)
+                } else {
+                    Some(Token::GreaterThan)
+                }
+            }
+            '<' => {
+                if self.chars.peek() == Some(&'-') {
+                    self.chars.next();
+                    self.pos += 1;
+                    Some(Token::Assign) // Changed from Assignment
+                } else if self.chars.peek() == Some(&'=') {
+                    self.chars.next();
+                    self.pos += 1;
+                    Some(Token::LessThanOrEqual)
                 } else {
                     Some(Token::LessThan)
                 }
-            },    
+            }
             '+' => Some(Token::Plus),
             '-' => Some(Token::Minus),
             '*' => Some(Token::Multiply),
             '/' => Some(Token::Divide),
-            '0'..='9' => {
-                let mut number = next_char.to_digit(10)? as i32;
-                while let Some(next_char) = self.chars.clone().next() {
-                    if let Some(digit) = next_char.to_digit(10) {
-                        number = number * 10 + digit as i32;
-                        self.chars.next();
-                    } else {
+            '(' => Some(Token::OpenParen),
+            ')' => Some(Token::CloseParen),
+            '[' => Some(Token::OpenBracket),
+            ']' => Some(Token::CloseBracket),
+            ',' => Some(Token::Comma),
+
+            'r' if self.chars.peek() == Some(&'"') => {
+                self.chars.next();
+                self.pos += 1;
+                let mut string = String::new();
+                while let Some(c) = self.chars.next() {
+                    self.pos += 1;
+                    if c == '"' {
                         break;
                     }
+                    string.push(c);
                 }
-                Some(Token::Integer(number))
+                Some(Token::RawString(string))
             }
-            'a'..='z' | 'A'..='Z' => {
-                let mut identifier = String::new();
-                identifier.push(next_char);
-                while let Some(next_char) = self.chars.clone().next() {
-                    if next_char.is_alphanumeric() || next_char == '_' {
-                        identifier.push(next_char);
+
+            'f' if self.chars.peek() == Some(&'"') => {
+                self.chars.next();
+                self.pos += 1;
+                let mut string = String::new();
+                let mut vars = Vec::new();
+                while let Some(c) = self.chars.next() {
+                    self.pos += 1;
+                    if c == '"' {
+                        break;
+                    }
+                    if c == '{' {
+                        let mut var = String::new();
+                        while let Some(c) = self.chars.next() {
+                            self.pos += 1;
+                            if c == '}' {
+                                break;
+                            }
+                            var.push(c);
+                        }
+                        vars.push(var);
+                        string.push_str("{}");
+                    } else {
+                        string.push(c);
+                    }
+                }
+                Some(Token::FormattedString(string, vars))
+            }
+
+            '"' => {
+                if self.chars.peek() == Some(&'"') && self.chars.clone().nth(1) == Some('"') {
+                    // Multiline string
+                    self.chars.next();
+                    self.chars.next();
+                    self.pos += 2;
+                    let mut string = String::new();
+                    while let Some(c) = self.chars.next() {
+                        self.pos += 1;
+                        if c == '"'
+                            && self.chars.peek() == Some(&'"')
+                            && self.chars.clone().nth(1) == Some('"')
+                        {
+                            self.chars.next();
+                            self.chars.next();
+                            self.pos += 2;
+                            break;
+                        }
+                        string.push(c);
+                    }
+                    Some(Token::MultilineString(string))
+                } else {
+                    // Regular string
+                    let mut string = String::new();
+                    while let Some(c) = self.chars.next() {
+                        self.pos += 1;
+                        if c == '"' {
+                            break;
+                        }
+                        string.push(c);
+                    }
+                    Some(Token::String(string))
+                }
+            }
+
+            '0'..='9' => {
+                let mut number = String::from(next_char);
+                let mut is_float = false;
+
+                while let Some(&c) = self.chars.peek() {
+                    if c == '.' && !is_float {
+                        is_float = true;
+                        number.push(c);
                         self.chars.next();
+                        self.pos += 1;
+                    } else if c.is_digit(10) {
+                        number.push(c);
+                        self.chars.next();
+                        self.pos += 1;
                     } else {
                         break;
                     }
                 }
+
+                if is_float {
+                    Some(Token::Float(number.parse().unwrap()))
+                } else {
+                    Some(Token::Integer(number.parse().unwrap()))
+                }
+            }
+
+            'N' => {
+                // Fix: Handle NOT= as a special case
+                if self.input[self.pos..].starts_with("OT=") {
+                    for _ in 0..3 {
+                        // Skip "OT="
+                        self.chars.next();
+                        self.pos += 1;
+                    }
+                    Some(Token::NotEqual)
+                } else {
+                    Some(Token::Identifier("N".to_string()))
+                }
+            }
+
+            c @ ('a'..='z' | 'A'..='Z') => {
+                let mut identifier = String::from(c);
+                while let Some(&c) = self.chars.peek() {
+                    if c.is_alphanumeric() || c == '_' {
+                        identifier.push(c);
+                        self.chars.next();
+                        self.pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+
                 match identifier.as_str() {
-                    "DISPLAY" => Some(Token::Display),
-                    "INPUT" => Some(Token::Input),
+                    // Make sure MOD is recognized before general identifiers
                     "MOD" => Some(Token::Modulo),
-                    ">=" => Some(Token::GreaterThanOrEqual),
-                    "<=" => Some(Token::LessThanOrEqual),
+                    "DISPLAY" => {
+                        // Handle DISPLAY("hi") case
+                        while let Some(&c) = self.chars.peek() {
+                            if c.is_whitespace() {
+                                self.chars.next();
+                                self.pos += 1;
+                                continue;
+                            }
+                            if c == '(' {
+                                self.chars.next();
+                                self.pos += 1;
+                                if let Some(Token::String(s)) = self.next_token() {
+                                    while let Some(&c) = self.chars.peek() {
+                                        if c == ')' {
+                                            self.chars.next();
+                                            self.pos += 1;
+                                            break;
+                                        }
+                                        self.chars.next();
+                                        self.pos += 1;
+                                    }
+                                    return Some(Token::Display(Some(Box::new(Token::String(s)))));
+                                }
+                            }
+                            break;
+                        }
+                        Some(Token::Display(None))
+                    }
+                    "INPUT" => Some(Token::Input),
                     "IF" => Some(Token::If),
                     "ELSE" => Some(Token::Else),
                     "REPEAT" => Some(Token::Repeat),
-                    "REPEAT UNTIL" => Some(Token::RepeatUntil),
                     "NOT" => Some(Token::Not),
                     "AND" => Some(Token::And),
                     "OR" => Some(Token::Or),
                     "COMMENT" => Some(Token::Comment),
                     "COMMENTBLOCK" => Some(Token::CommentBlock),
-                    "RETURN" => Some(Token::Return)
+                    "RETURN" => Some(Token::Return),
+                    "TRUE" => Some(Token::Boolean(true)),
+                    "FALSE" => Some(Token::Boolean(false)),
+                    "CLASS" => Some(Token::Class),
+                    "TOSTRING" => Some(Token::ToString),
+                    "TONUM" => Some(Token::ToNum),
+                    "FOR" => Some(Token::For),
+                    "EACH" => Some(Token::Each),
+                    "IN" => Some(Token::In),
+                    "PROCEDURE" => Some(Token::Procedure),
+                    "SUBSTRING" => Some(Token::Substring),
+                    "CONCAT" => Some(Token::Concat),
+                    "IMPORT" => Some(Token::Import),
+                    "DISPLAYINLINE" => Some(Token::DisplayInline),
+                    "UNTIL" => Some(Token::Until),
+                    "TIMES" => Some(Token::Times),
+                    "NOT=" => Some(Token::NotEqual),
+                    "INSERT" => Some(Token::ListInsert),
+                    "APPEND" => Some(Token::ListAppend),
+                    "REMOVE" => Some(Token::ListRemove),
+                    "LENGTH" => Some(Token::ListLength),
+                    "RANDOM" => Some(Token::Random),
+                    _ => Some(Token::Identifier(identifier)),
                 }
             }
+            _ => Some(Token::Identifier(next_char.to_string())),
         }
     }
 }

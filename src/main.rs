@@ -11,7 +11,10 @@ fn main() {
     let args = std::env::args().skip(1).collect::<Vec<String>>();
 
     if args.len() != 2 {
-        eprintln!("Usage: {} <input_file.pc> <output_file>", env!("CARGO_PKG_NAME"));
+        eprintln!(
+            "Usage: {} <input_file.pc> <output_file>",
+            env!("CARGO_PKG_NAME")
+        );
         std::process::exit(0);
     }
 
@@ -50,7 +53,10 @@ fn main() {
                 std::process::exit(1);
             }
 
-            println!("Successfully executed program and wrote output to {}", output_file);
+            println!(
+                "Successfully executed program and wrote output to {}",
+                output_file
+            );
         }
         Err(err) => {
             eprintln!("Error parsing code: {}", err);
