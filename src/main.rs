@@ -6,28 +6,44 @@ mod lexer;
 mod parser;
 
 use lexer::Lexer;
+
+include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
 struct Config {
     input_file: String,
     output_file: String,
     debug: bool,
+    show_version: bool,
 }
 
 fn parse_args() -> Result<Config, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     match args.len() {
+        0 => Err(format!(
+            "Usage: {} [--debug] [--version] <input_file.psl> <output_file>",
+            env!("CARGO_PKG_NAME")
+        )),
+        1 if args[0] == "--version" || args[0] == "-v" => Ok(Config {
+            input_file: String::new(),
+            output_file: String::new(),
+            debug: false,
+            show_version: true,
+        }),
         2 => Ok(Config {
             input_file: args[0].clone(),
             output_file: args[1].clone(),
             debug: false,
+            show_version: false,
         }),
         3 if args[0] == "--debug" => Ok(Config {
             input_file: args[1].clone(),
             output_file: args[2].clone(),
             debug: true,
+            show_version: false,
         }),
         _ => Err(format!(
-            "Usage: {} [--debug] <input_file.psl> <output_file>",
+            "Usage: {} [--debug] [--version] <input_file.psl> <output_file>",
             env!("CARGO_PKG_NAME")
         )),
     }
@@ -41,6 +57,11 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    if config.show_version {
+        println!("Pseudolang version {}", VERSION);
+        return;
+    }
 
     if config.debug {
         println!("\n=== Debug Mode Enabled ===\n");

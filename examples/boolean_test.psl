@@ -1,0 +1,16 @@
+PROCEDURE isPositive(num) {
+    RETURN(num > 0)
+}
+PROCEDURE isEven(num) {
+    RETURN(num MOD 2 = 0)
+}
+a <- 42
+b <- -3
+result <- isPositive(a) AND isEven(a)
+DISPLAY(result)
+result <- isPositive(b) OR isEven(b)
+DISPLAY(result)
+result <- NOT (isPositive(b) AND isEven(b))
+DISPLAY(result)
+
+COMMENT Program should output true false true

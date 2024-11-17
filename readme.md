@@ -1,8 +1,4 @@
-# WARNING
-
-## This project is still in development, and is not AT ALL yet ready for use
-
-## [PseudoLang](https://pseudo-lang.org/)
+# [PseudoLang](https://pseudo-lang.org/)
 
 <p align="center">
     <img src="Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
@@ -58,7 +54,6 @@ We will be adding examples of how to use PseudoLang. Check back soon!
 - [ ] Examples
 - [ ] VSCode syntax highlighter extension and runner
 - [ ] GitHub issue template
-- [ ] GitHub Actions compile + Release
 - [ ] Better error handling (suggestions, etc)
 - [ ] Code todos
 
