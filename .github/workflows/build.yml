@@ -59,6 +59,7 @@ jobs:
         run: |
           Copy-Item "target\x86_64-pc-windows-gnu\release\fplc.exe" -Destination "installer\fplc.exe" -Force
           Copy-Item "LICENSE" -Destination "installer\" -Force
+          New-Item -Path "release\installer" -ItemType Directory -Force
           
       - name: Build Installer
         run: makensis installer\pseudolang.nsi
