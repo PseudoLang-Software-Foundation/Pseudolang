@@ -54,7 +54,7 @@ The **examples** folder contains multiple example files for Pseudolang. It is al
 
 - [ ] Web version
 - [ ] Compiler optimizations
-- [ ] Installer + debian package
+- [ ] Debian package
 - [ ] Library support (remote procedures, calls, networking, etc)
 - [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices))
 - [ ] Man page and and better help menu on simple command run
