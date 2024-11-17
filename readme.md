@@ -20,7 +20,9 @@ This project aims to fully support Windows and Linux.
 
 ## Releases
 
-Goto [nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main) and download the binary for your operating system.
+Goto **[nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main)** and download the binary for your operating system.
+
+There is also an **installer** you can download in [releases](https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases).
 
 ## Use
 
@@ -38,7 +40,9 @@ In order to compile the project yourself, you will need to have rust installed.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
 - - To build **release**, you will need bash (or you can translate the shell commands to your liking). Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
 - - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
+
 - In order to run the unit tests, simply run `cargo test`.
+- For the NSIS installer, just compile `./installer/pseudolang.nsi`
 
 ## Examples
 
@@ -49,9 +53,8 @@ The **examples** folder contains multiple example files for Pseudolang. It is al
 ## Todo
 
 - [ ] Web version
-- [ ] Math functions
 - [ ] Compiler optimizations
-- [ ] Installer
+- [ ] Installer + debian package
 - [ ] Library support (remote procedures, calls, networking, etc)
 - [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices))
 - [ ] Man page and and better help menu on simple command run

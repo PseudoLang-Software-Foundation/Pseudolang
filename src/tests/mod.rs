@@ -57,6 +57,28 @@ mod test {
     }
 
     #[test]
+    fn test_comments() {
+        assert_output(
+            r#"
+            COMMENT This is a comment
+            DISPLAY(42)
+            "#,
+            "42",
+        );
+
+        assert_output(
+            r#"
+            COMMENTBLOCK
+            This is a comment
+            43
+            COMMENTBLOCK
+            DISPLAY(42)
+            "#,
+            "42",
+        );
+    }
+
+    #[test]
     fn test_boolean_operations() {
         assert_output("DISPLAY(TRUE AND FALSE)", "false");
         assert_output("DISPLAY(TRUE OR FALSE)", "true");
