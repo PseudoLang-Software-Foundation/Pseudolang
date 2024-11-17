@@ -1,5 +1,21 @@
 #!/bin/bash
+
 chmod +x build_release.sh
+
+mkdir -p release
+
+echo "Building for Windows..."
+cross build --target x86_64-pc-windows-gnu --release
+
+echo "Building for Linux..."
 cross build --target x86_64-unknown-linux-gnu --release
-cross build --target x86_64-apple-darwin --release
-cross build --target x86_64-pc-windows-msvc --release
+
+echo "Copying binaries to release folder..."
+
+cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe
+
+cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64
+
+chmod +x release/fplc-linux-*
+
+echo "Build complete! Binaries are in the release folder."

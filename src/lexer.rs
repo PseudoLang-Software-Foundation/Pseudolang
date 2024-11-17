@@ -4,21 +4,18 @@ pub enum Token {
     Unknown,
     Identifier(String),
 
-    // Assignment, Display, Input
     Assignment,
     Assign,
-    Display(Option<Box<Token>>), // For DISPLAY("hi") -> Display(Some(Box::new(String("hi"))))
+    Display(Option<Box<Token>>),
     DisplayInline,
     Input,
 
-    // Arithmetic Operators
     Plus,
     Minus,
     Multiply,
     Divide,
     Modulo,
 
-    // Relational and Boolean Operators
     Equal,
     NotEqual,
     GreaterThan,
@@ -29,16 +26,14 @@ pub enum Token {
     Or,
     Not,
 
-    // Selection
     If,
     Else,
     Repeat,
     RepeatUntil,
     Until,
-    Times, // For REPEAT 5 TIMES -> Repeat(5)
+    Times,
 
-    // List operations
-    ListCreate(Vec<Token>), // For ["1", 1] -> ListCreate(vec![String("1"), Integer(1)]), unsure about this for the future
+    ListCreate(Vec<Token>),
     ListAssign,
     ListAccess,
     ListInsert,
@@ -47,11 +42,9 @@ pub enum Token {
     ListLength,
     ForEach,
 
-    // Procedures
     Procedure,
     Return,
 
-    // Data Types
     Integer(i32),
     Float(f32),
     String(String),
@@ -60,11 +53,9 @@ pub enum Token {
     FormattedString(String, Vec<String>),
     Boolean(bool),
 
-    // Comments
     Comment,
     CommentBlock,
 
-    // Special chars
     OpenParen,
     CloseParen,
     OpenBracket,
@@ -76,7 +67,6 @@ pub enum Token {
     OpenBrace,
     CloseBrace,
 
-    // Miscellaneous Operations
     Class,
     ToString,
     ToNum,
@@ -90,6 +80,7 @@ pub enum Token {
     True,
     False,
     Random,
+    Sort,
 }
 
 pub struct Lexer<'a> {
@@ -112,7 +103,6 @@ impl<'a> Lexer<'a> {
         while let Some(token) = self.next_token() {
             match token {
                 Token::Comment => {
-                    // Skip rest of line for comments
                     while let Some(c) = self.chars.next() {
                         if c == '\n' {
                             break;
@@ -120,20 +110,15 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Token::CommentBlock => {
-                    let mut depth = 1;
-                    while depth > 0 {
-                        match self.chars.next() {
-                            Some('C') => {
-                                let block = self.input[self.pos..].starts_with("COMMENTBLOCK");
-                                if block {
-                                    depth -= 1;
-                                    for _ in 0..11 {
-                                        self.chars.next();
-                                    }
-                                }
+                    while let Some(_) = self.chars.next() {
+                        self.pos += 1;
+
+                        if self.input[self.pos..].starts_with("COMMENTBLOCK") {
+                            for _ in 0.."COMMENTBLOCK".len() {
+                                self.chars.next();
+                                self.pos += 1;
                             }
-                            Some(_) => {}
-                            None => break,
+                            break;
                         }
                     }
                 }
@@ -148,14 +133,11 @@ impl<'a> Lexer<'a> {
         self.pos += 1;
 
         match next_char {
-            // Add handling for C-style comments
             '/' => {
                 if let Some(&'/') = self.chars.peek() {
-                    // Skip the second '/'
                     self.chars.next();
                     self.pos += 1;
 
-                    // Skip the rest of the line
                     while let Some(c) = self.chars.next() {
                         self.pos += 1;
                         if c == '\n' {
@@ -167,7 +149,7 @@ impl<'a> Lexer<'a> {
                     Some(Token::Divide)
                 }
             }
-            // Change whitespace handling to preserve newlines
+
             '\n' => Some(Token::Newline),
             ' ' | '\t' | '\r' => self.next_token(),
             '{' => Some(Token::OpenBrace),
@@ -186,7 +168,7 @@ impl<'a> Lexer<'a> {
                 if self.chars.peek() == Some(&'-') {
                     self.chars.next();
                     self.pos += 1;
-                    Some(Token::Assign) // Changed from Assignment
+                    Some(Token::Assign)
                 } else if self.chars.peek() == Some(&'=') {
                     self.chars.next();
                     self.pos += 1;
@@ -249,7 +231,6 @@ impl<'a> Lexer<'a> {
 
             '"' => {
                 if self.chars.peek() == Some(&'"') && self.chars.clone().nth(1) == Some('"') {
-                    // Multiline string
                     self.chars.next();
                     self.chars.next();
                     self.pos += 2;
@@ -269,7 +250,6 @@ impl<'a> Lexer<'a> {
                     }
                     Some(Token::MultilineString(string))
                 } else {
-                    // Regular string
                     let mut string = String::new();
                     while let Some(c) = self.chars.next() {
                         self.pos += 1;
@@ -309,14 +289,20 @@ impl<'a> Lexer<'a> {
             }
 
             'N' => {
-                // Fix: Handle NOT= as a special case
-                if self.input[self.pos..].starts_with("OT=") {
-                    for _ in 0..3 {
-                        // Skip "OT="
+                if self.pos + 2 <= self.input.len()
+                    && &self.input[self.pos - 1..self.pos + 2] == "NOT"
+                {
+                    self.chars.next();
+                    self.chars.next();
+                    self.pos += 2;
+
+                    if self.chars.peek() == Some(&'=') {
                         self.chars.next();
                         self.pos += 1;
+                        Some(Token::NotEqual)
+                    } else {
+                        Some(Token::Not)
                     }
-                    Some(Token::NotEqual)
                 } else {
                     Some(Token::Identifier("N".to_string()))
                 }
@@ -335,10 +321,8 @@ impl<'a> Lexer<'a> {
                 }
 
                 match identifier.as_str() {
-                    // Make sure MOD is recognized before general identifiers
                     "MOD" => Some(Token::Modulo),
                     "DISPLAY" => {
-                        // Skip any whitespace
                         while let Some(&c) = self.chars.peek() {
                             if c.is_whitespace() {
                                 self.chars.next();
@@ -348,9 +332,8 @@ impl<'a> Lexer<'a> {
                             break;
                         }
 
-                        // Check if there's a string literal immediately after DISPLAY
                         if let Some(&'"') = self.chars.peek() {
-                            self.chars.next(); // consume quote
+                            self.chars.next();
                             self.pos += 1;
                             let mut string = String::new();
                             while let Some(c) = self.chars.next() {
@@ -362,7 +345,6 @@ impl<'a> Lexer<'a> {
                             }
                             Some(Token::Display(Some(Box::new(Token::String(string)))))
                         } else {
-                            // Otherwise just return Display token
                             Some(Token::Display(None))
                         }
                     }
@@ -397,6 +379,7 @@ impl<'a> Lexer<'a> {
                     "REMOVE" => Some(Token::ListRemove),
                     "LENGTH" => Some(Token::ListLength),
                     "RANDOM" => Some(Token::Random),
+                    "SORT" => Some(Token::Sort),
                     _ => Some(Token::Identifier(identifier)),
                 }
             }

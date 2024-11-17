@@ -1,7 +1,8 @@
 # WARNING
-# This project is still in development, and is not AT ALL yet ready for use.
 
-# [PseudoLang](https://pseudo-lang.org/)
+## This project is still in development, and is not AT ALL yet ready for use
+
+## [PseudoLang](https://pseudo-lang.org/)
 
 <p align="center">
     <img src="Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
@@ -9,7 +10,7 @@
 
 Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by The College Board's AP Computer Science Pseudocode
 
-This project aims to fully support Windows, Linux (Debian), and MacOS.
+This project aims to fully support Windows and Linux.
 
 ## Releases
 
@@ -17,7 +18,7 @@ Soon, under the releases section you will be able to find pre-compiled binaries 
 
 ## Use
 
-To use the compiled versions, run the executable in the directory of the file ending with `.pc`, and pass the file as and argument. Ex: `./fplc main.pc`
+To use the compiled versions, run the executable in the directory of the file ending with `.psl`, and pass the file as and argument. Ex: `./fplc main.psl`
 
 It is highly recommended to add the executable to your PATH, so you can simply run `fplc`.
 
@@ -31,6 +32,7 @@ In order to compile the project yourself, you will need to have rust installed.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
 - - To build **release**, you will need bash. Then run `./build_release.sh`. The binaries will be in folders under `target` for their operating systems.
 - - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
+- In order to run the unit tests, simply run `cargo test`.
 
 The output will be in the target directory in debug as an executable for the 3 supported operating systems.
 
@@ -42,20 +44,22 @@ We will be adding examples of how to use PseudoLang. Check back soon!
 
 ## Todo
 
-- [ ] Complete
 - [ ] Web version
+- [ ] Math functions
+- [ ] Console input
+- [ ] Compiler optimizations
 - [ ] Installer
 - [ ] Library support (remote procedures, calls, etc)
-- [ ] Casting and more types (ex: doubles, n-dimensional arrays)
+- [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices))
 - [ ] Console input
-- [ ] Raise error
 - [ ] Networking
 - [ ] Create release build
 - [ ] Man page and and help menu on simple command run
 - [ ] Examples
 - [ ] VSCode syntax highlighter extension and runner
 - [ ] GitHub issue template
-- [ ] Error handling (suggestions, etc)
+- [ ] GitHub Actions compile + Release
+- [ ] Better error handling (suggestions, etc)
 - [ ] Code todos
 
 ## Issues

@@ -27,7 +27,7 @@ fn parse_args() -> Result<Config, String> {
             debug: true,
         }),
         _ => Err(format!(
-            "Usage: {} [--debug] <input_file.pc> <output_file>",
+            "Usage: {} [--debug] <input_file.psl> <output_file>",
             env!("CARGO_PKG_NAME")
         )),
     }
@@ -66,7 +66,10 @@ fn main() {
         println!("\n=== Lexer Output ===");
         println!("Tokens: {:?}", tokens);
     }
-    println!("Successfully lexed program");
+
+    if !config.debug {
+        println!("Successfully lexed program");
+    }
 
     if config.debug {
         println!("\n=== Parser Starting ===");
@@ -77,17 +80,21 @@ fn main() {
             if config.debug {
                 println!("\n=== Parser Output ===");
                 println!("AST: {:#?}", ast);
-                println!("Successfully parsed program");
                 println!("\n=== Starting Execution ===");
+                println!("Executing program...");
             }
 
-            println!("Executing program...");
+            if !config.debug {
+                println!("Successfully parsed program");
+            }
+
             match interpreter::run(ast) {
                 Ok(result) => {
-                    println!("Program output:");
-                    println!("{}", result);
+                    if config.debug {
+                        println!("Program output:");
+                        println!("{}", result);
+                    }
 
-                    // Add platform-specific handling
                     #[cfg(target_os = "windows")]
                     let output_file = if !config.output_file.ends_with(".exe") {
                         format!("{}.exe", config.output_file)
@@ -98,7 +105,6 @@ fn main() {
                     #[cfg(not(target_os = "windows"))]
                     let output_file = config.output_file;
 
-                    // Create a shell script wrapper for the output
                     #[cfg(target_os = "windows")]
                     let content = format!(
                         "
@@ -137,10 +143,12 @@ fn main() {
                         }
                     }
 
-                    println!(
-                        "Successfully executed program and wrote output to {}",
-                        output_file
-                    );
+                    if !config.debug {
+                        println!(
+                            "Successfully executed program and wrote output to {}",
+                            output_file
+                        );
+                    }
                 }
                 Err(err) => {
                     eprintln!("Error during execution: {}", err);

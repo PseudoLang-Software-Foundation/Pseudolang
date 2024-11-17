@@ -1,23 +1,43 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package]
-name = "pseudolang"
-version = "0.0.1"
+name = "fplc"
+version = "0.9.0"
 edition = "2021"
 description = "A pseudolang interpreter written in Rust"
+
+[lib]
+name = "fplc"
+path = "src/lib.rs"
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "linker=x86_64-linux-gnu-gcc"]
 
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "linker=x86_64-apple-darwin15-clang"]
+linker = "x86_64-apple-darwin-clang"
+
+[target.aarch64-apple-darwin]
+linker = "aarch64-apple-darwin-clang"
 
 [profile.dev]
 panic = "abort"
 
 [profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
 panic = "abort"
+strip = true
 
 [dependencies]
-cross="0.2.5"
 rand = "0.8.5"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"

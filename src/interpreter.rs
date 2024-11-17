@@ -1,9 +1,12 @@
 use crate::parser::{AstNode, BinaryOperator, UnaryOperator};
 use rand::Rng;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum Value {
     Integer(i32),
     Float(f32),
@@ -17,10 +20,10 @@ enum Value {
 struct Environment {
     variables: HashMap<String, Value>,
     procedures: HashMap<String, (Vec<String>, AstNode)>,
-    classes: HashMap<String, AstNode>, // Added for class support
+    classes: HashMap<String, AstNode>,
     output: String,
-    return_value: Option<Value>,      // Add this field
-    parent: Option<Box<Environment>>, // Add parent scope
+    return_value: Option<Value>,
+    parent: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
@@ -28,32 +31,31 @@ impl Environment {
         Environment {
             variables: HashMap::new(),
             procedures: HashMap::new(),
-            classes: HashMap::new(), // Added
+            classes: HashMap::new(),
             output: String::new(),
-            return_value: None, // Initialize the new field
+            return_value: None,
             parent: None,
         }
     }
 
-    fn with_parent(parent: Environment) -> Self {
+    fn new_with_parent(parent: Rc<RefCell<Environment>>) -> Self {
         Environment {
             variables: HashMap::new(),
-            procedures: parent.procedures.clone(),
-            classes: parent.classes.clone(),
-            output: parent.output.clone(),
+            procedures: parent.borrow().procedures.clone(),
+            classes: parent.borrow().classes.clone(),
+            output: String::new(),
             return_value: None,
-            parent: Some(Box::new(parent)),
+            parent: Some(Rc::clone(&parent)),
         }
     }
 
     fn get(&self, name: &str) -> Option<Value> {
-        // First check current environment
         if let Some(value) = self.variables.get(name) {
             return Some(value.clone());
         }
-        // Then check parent environment if it exists
-        if let Some(parent) = &self.parent {
-            return parent.get(name);
+
+        if let Some(ref parent) = self.parent {
+            return parent.borrow().get(name);
         }
         None
     }
@@ -61,27 +63,58 @@ impl Environment {
     fn set(&mut self, name: String, value: Value) {
         self.variables.insert(name, value);
     }
+
+    fn get_procedure(&self, name: &str) -> Option<(Vec<String>, AstNode)> {
+        self.procedures.get(name).cloned()
+    }
+
+    fn append_to_list(&mut self, name: &str, value: Value) -> Result<Value, String> {
+        if let Some(Value::List(mut elements)) = self.get(name) {
+            elements.push(value.clone());
+            self.set(name.to_string(), Value::List(elements.clone()));
+            Ok(Value::List(elements))
+        } else {
+            Err(format!("Variable {} is not a list", name))
+        }
+    }
 }
+
+const MAX_STACK_DEPTH: usize = 1000;
+static mut CURRENT_STACK_DEPTH: usize = 0;
 
 pub fn run(ast: AstNode) -> Result<String, String> {
-    println!("Starting interpreter...");
-    let mut env = Environment::new();
-    let result = evaluate_node(&ast, &mut env)?;
-    println!("Execution completed");
-    Ok(format!("{}{}", env.output, value_to_string(&result)))
+    let env = Rc::new(RefCell::new(Environment::new()));
+    let debug = false;
+    if debug {
+        println!("Starting interpreter...");
+    }
+    let _result = evaluate_node(&ast, Rc::clone(&env), debug)?;
+    if debug {
+        println!("Execution completed");
+    }
+    let output = env.borrow().output.clone();
+    Ok(output)
 }
 
-fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String> {
-    println!("Evaluating node: {:?}", node);
+fn evaluate_node(
+    node: &AstNode,
+    env: Rc<RefCell<Environment>>,
+    debug: bool,
+) -> Result<Value, String> {
+    unsafe {
+        if CURRENT_STACK_DEPTH > MAX_STACK_DEPTH {
+            return Err("Stack overflow: maximum recursion depth exceeded".to_string());
+        }
+    }
+
+    if debug {
+        println!("Evaluating node: {:?}", node);
+    }
     match node {
         AstNode::Program(statements) => {
             let mut last_value = Value::Unit;
             for stmt in statements {
-                last_value = evaluate_node(stmt, env)?;
-                // Check if this statement is a Display node
-                if matches!(stmt, AstNode::Display(_)) {
-                    last_value = Value::Unit;
-                }
+                last_value = evaluate_node(stmt, Rc::clone(&env), debug)?;
             }
             Ok(last_value)
         }
@@ -89,7 +122,7 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         AstNode::Block(statements) => {
             let mut last_value = Value::Unit;
             for stmt in statements {
-                last_value = evaluate_node(stmt, env)?;
+                last_value = evaluate_node(stmt, Rc::clone(&env), debug)?;
             }
             Ok(last_value)
         }
@@ -101,20 +134,31 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         AstNode::List(elements) => {
             let mut values = Vec::new();
             for elem in elements {
-                values.push(evaluate_node(elem, env)?);
+                values.push(evaluate_node(elem, Rc::clone(&env), debug)?);
             }
             Ok(Value::List(values))
         }
 
         AstNode::Identifier(name) => env
+            .borrow()
             .get(name)
             .ok_or_else(|| format!("Undefined variable: {}", name)),
 
         AstNode::Assignment(target, value) => {
-            let val = evaluate_node(value, env)?;
+            let val = evaluate_node(value, Rc::clone(&env), debug)?;
             if let AstNode::Identifier(name) = &**target {
-                println!("Assigning {} = {:?}", name, val); // Add debug output
-                env.set(name.clone(), val.clone());
+                if debug {
+                    println!("Assigning {} = {:?}", name, val);
+                }
+                match &**value {
+                    AstNode::FormattedString(_, _) => {
+                        let output = value_to_string(&val);
+                        env.borrow_mut().output.push_str(&output);
+                        env.borrow_mut().output.push('\n');
+                    }
+                    _ => {}
+                }
+                env.borrow_mut().set(name.clone(), val.clone());
                 Ok(val)
             } else {
                 Err("Invalid assignment target".to_string())
@@ -122,23 +166,23 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::BinaryOp(left, op, right) => {
-            let left_val = evaluate_node(left, env)?;
-            let right_val = evaluate_node(right, env)?;
+            let left_val = evaluate_node(left, Rc::clone(&env), debug)?;
+            let right_val = evaluate_node(right, Rc::clone(&env), debug)?;
             evaluate_binary_op(&left_val, op, &right_val)
         }
 
         AstNode::UnaryOp(op, expr) => {
-            let val = evaluate_node(expr, env)?;
+            let val = evaluate_node(expr, Rc::clone(&env), debug)?;
             evaluate_unary_op(op, &val)
         }
 
         AstNode::If(condition, then_branch, else_branch) => {
-            let cond_val = evaluate_node(condition, env)?;
+            let cond_val = evaluate_node(condition, Rc::clone(&env), debug)?;
             match cond_val {
-                Value::Boolean(true) => evaluate_node(then_branch, env),
+                Value::Boolean(true) => evaluate_node(then_branch, Rc::clone(&env), debug),
                 Value::Boolean(false) => {
                     if let Some(else_branch) = else_branch {
-                        evaluate_node(else_branch, env)
+                        evaluate_node(else_branch, Rc::clone(&env), debug)
                     } else {
                         Ok(Value::Unit)
                     }
@@ -148,10 +192,10 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::RepeatTimes(count, body) => {
-            let count_val = evaluate_node(count, env)?;
+            let count_val = evaluate_node(count, Rc::clone(&env), debug)?;
             if let Value::Integer(n) = count_val {
                 for _ in 0..n {
-                    evaluate_node(body, env)?;
+                    evaluate_node(body, Rc::clone(&env), debug)?;
                 }
                 Ok(Value::Unit)
             } else {
@@ -160,20 +204,23 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::Display(expr) => {
-            if let Some(expr) = expr {
-                let value = evaluate_node(expr, env)?;
-                let output = format!("{}\n", value_to_string(&value));
-                env.output.push_str(&output);
+            let value = if let Some(expr) = expr {
+                let result = evaluate_node(expr, Rc::clone(&env), debug)?;
+                let output = value_to_string(&result);
+                env.borrow_mut().output.push_str(&output);
+                env.borrow_mut().output.push('\n');
+                result
             } else {
-                env.output.push('\n');
-            }
-            Ok(Value::Unit) // Change this to Value::Unit so it doesn't print the return value
+                env.borrow_mut().output.push('\n');
+                Value::Unit
+            };
+            Ok(value)
         }
 
         AstNode::DisplayInline(expr) => {
-            let value = evaluate_node(expr, env)?;
+            let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
-            env.output.push_str(&output);
+            env.borrow_mut().output.push_str(&output);
             Ok(Value::Unit)
         }
 
@@ -188,83 +235,205 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::ProcedureDecl(name, params, body) => {
-            env.procedures
+            env.borrow_mut()
+                .procedures
                 .insert(name.clone(), (params.clone(), (**body).clone()));
             Ok(Value::Unit)
         }
 
         AstNode::ProcedureCall(name, args) => {
-            if let Some((params, body)) = env.procedures.get(name).cloned() {
-                let mut new_env = Environment::with_parent(env.clone());
+            unsafe {
+                CURRENT_STACK_DEPTH += 1;
+            }
 
-                if args.len() != params.len() {
-                    return Err(format!("Wrong number of arguments for procedure {}", name));
+            let result = match name.as_str() {
+                "CONCAT" => {
+                    if args.len() != 2 {
+                        return Err("CONCAT requires two arguments".to_string());
+                    }
+                    let s1 = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let s2 = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    if let (Value::String(a), Value::String(b)) = (s1, s2) {
+                        Ok(Value::String(format!("{}{}", a, b)))
+                    } else {
+                        Err("CONCAT requires string arguments".to_string())
+                    }
                 }
-
-                // Evaluate arguments in caller's environment
-                let mut evaluated_args = Vec::new();
-                for arg in args {
-                    evaluated_args.push(evaluate_node(arg, env)?);
+                "SUBSTRING" => {
+                    if args.len() != 3 {
+                        return Err("SUBSTRING requires three arguments".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let start_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    let end_val = evaluate_node(&args[2], Rc::clone(&env), debug)?;
+                    if let (Value::String(s), Value::Integer(start), Value::Integer(end)) =
+                        (str_val, start_val, end_val)
+                    {
+                        let start_idx = start - 1;
+                        let end_idx = end - 1;
+                        if start_idx >= 0 && end_idx >= start_idx && (end_idx as usize) < s.len() {
+                            Ok(Value::String(
+                                s[start_idx as usize..=end_idx as usize].to_string(),
+                            ))
+                        } else {
+                            Err("Invalid substring indices".to_string())
+                        }
+                    } else {
+                        Err("Invalid substring arguments".to_string())
+                    }
                 }
-
-                // Set parameters in procedure's environment
-                for (param, arg_val) in params.iter().zip(evaluated_args) {
-                    new_env.set(param.clone(), arg_val);
+                "LENGTH" => {
+                    if args.len() != 1 {
+                        return Err("LENGTH requires one argument".to_string());
+                    }
+                    let arg = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match arg {
+                        Value::List(elements) => Ok(Value::Integer(elements.len() as i32)),
+                        Value::String(s) => Ok(Value::Integer(s.len() as i32)),
+                        _ => Err("LENGTH requires a list or string argument".to_string()),
+                    }
                 }
+                "REMOVE" => {
+                    if args.len() != 2 {
+                        return Err("REMOVE requires two arguments".to_string());
+                    }
+                    evaluate_node(
+                        &AstNode::Remove(Box::new(args[0].clone()), Box::new(args[1].clone())),
+                        env,
+                        debug,
+                    )
+                }
+                "APPEND" => {
+                    if args.len() != 2 {
+                        return Err("APPEND requires two arguments".to_string());
+                    }
+                    evaluate_node(
+                        &AstNode::Append(Box::new(args[0].clone()), Box::new(args[1].clone())),
+                        env,
+                        debug,
+                    )
+                }
+                "INSERT" => {
+                    if args.len() != 3 {
+                        return Err("INSERT requires three arguments".to_string());
+                    }
+                    evaluate_node(
+                        &AstNode::Insert(
+                            Box::new(args[0].clone()),
+                            Box::new(args[1].clone()),
+                            Box::new(args[2].clone()),
+                        ),
+                        env,
+                        debug,
+                    )
+                }
+                _ => {
+                    let procedure = env
+                        .borrow()
+                        .get_procedure(name)
+                        .ok_or_else(|| format!("Procedure '{}' not found", name))?;
 
-                let result = evaluate_node(&body, &mut new_env)?;
+                    let local_env =
+                        Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
 
-                // Transfer output back to caller's environment
-                env.output += &new_env.output;
+                    let (params, _) = procedure.clone();
+                    for (param, arg) in params.iter().zip(args) {
+                        let arg_value = evaluate_node(arg, Rc::clone(&env), debug)?;
+                        local_env.borrow_mut().set(param.clone(), arg_value);
+                    }
 
-                // Return any explicit return value first
-                if let Some(return_val) = new_env.return_value {
-                    Ok(return_val)
-                } else {
+                    let (_, body) = procedure;
+                    let result = match evaluate_node(&body, Rc::clone(&local_env), debug) {
+                        Err(e) if e == "Return" => local_env
+                            .borrow()
+                            .return_value
+                            .clone()
+                            .unwrap_or(Value::Unit),
+                        Ok(val) => {
+                            if let Some(return_value) = local_env.borrow().return_value.clone() {
+                                return_value
+                            } else {
+                                val
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    };
+
+                    env.borrow_mut().output.push_str(&local_env.borrow().output);
                     Ok(result)
                 }
-            } else {
-                Err(format!("Undefined procedure: {}", name))
+            };
+
+            unsafe {
+                CURRENT_STACK_DEPTH -= 1;
             }
+
+            result
         }
-
         AstNode::ListAccess(list, index) => {
-            let list_val = evaluate_node(list, env)?;
-            let index_val = evaluate_node(index, env)?;
+            let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
+            let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
-            if let (Value::List(elements), Value::Integer(i)) = (list_val, index_val) {
-                let idx = i - 1; // Convert 1-based to 0-based indexing
-                println!("List access: index {} (internal {})", i, idx); // Debug info
-                if idx >= 0 && (idx as usize) < elements.len() {
-                    Ok(elements[idx as usize].clone())
-                } else {
-                    Err(format!("List index out of bounds: {}", i))
+            match (list_val, index_val) {
+                (Value::List(elements), Value::Integer(i)) => {
+                    let idx = i - 1;
+                    if idx < 0 {
+                        Err("List index out of bounds: index cannot be less than 1".to_string())
+                    } else if (idx as usize) >= elements.len() {
+                        Err(format!(
+                            "List index out of bounds: {} (size: {})",
+                            i,
+                            elements.len()
+                        ))
+                    } else {
+                        Ok(elements[idx as usize].clone())
+                    }
                 }
-            } else {
-                Err("Invalid list access".to_string())
+                (Value::String(s), Value::Integer(i)) => {
+                    let idx = i - 1;
+                    if idx < 0 {
+                        Err("String index out of bounds: index cannot be less than 1".to_string())
+                    } else if (idx as usize) >= s.len() {
+                        Err(format!(
+                            "String index out of bounds: {} (size: {})",
+                            i,
+                            s.len()
+                        ))
+                    } else {
+                        let ch = s.chars().nth(idx as usize).ok_or("Invalid string index")?;
+                        Ok(Value::String(ch.to_string()))
+                    }
+                }
+                _ => Err(
+                    "Invalid index access - expected list or string and integer index".to_string(),
+                ),
             }
         }
 
         AstNode::ListAssignment(list, index, value) => {
-            let index_val = evaluate_node(index, env)?;
-            let new_val = evaluate_node(value, env)?;
+            let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
+            let new_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &**list {
-                if let Some(Value::List(mut elements)) = env.get(name) {
-                    if let Value::Integer(i) = index_val {
-                        let idx = i - 1; // Convert to 0-based
-                        if idx >= 0 && (idx as usize) < elements.len() {
-                            elements[idx as usize] = new_val.clone();
-                            env.set(name.clone(), Value::List(elements));
-                            Ok(new_val)
-                        } else {
-                            Err("List index out of bounds".to_string())
-                        }
+                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
+                    elements
+                } else {
+                    return Err(format!("Variable {} is not a list", name));
+                };
+
+                if let Value::Integer(i) = index_val {
+                    let idx = i - 1;
+                    if idx >= 0 && (idx as usize) < elements.len() {
+                        let mut new_elements = elements.clone();
+                        new_elements[idx as usize] = new_val.clone();
+                        env.borrow_mut()
+                            .set(name.clone(), Value::List(new_elements));
+                        Ok(new_val)
                     } else {
-                        Err("Invalid list index".to_string())
+                        Err("List index out of bounds".to_string())
                     }
                 } else {
-                    Err(format!("Variable {} is not a list", name))
+                    Err("Invalid list index".to_string())
                 }
             } else {
                 Err("Invalid list assignment target".to_string())
@@ -272,9 +441,9 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::Substring(string, start, end) => {
-            let str_val = evaluate_node(string, env)?;
-            let start_val = evaluate_node(start, env)?;
-            let end_val = evaluate_node(end, env)?;
+            let str_val = evaluate_node(string, Rc::clone(&env), debug)?;
+            let start_val = evaluate_node(start, Rc::clone(&env), debug)?;
+            let end_val = evaluate_node(end, Rc::clone(&env), debug)?;
 
             if let (Value::String(s), Value::Integer(start), Value::Integer(end)) =
                 (str_val, start_val, end_val)
@@ -294,8 +463,8 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::Concat(str1, str2) => {
-            let s1 = evaluate_node(str1, env)?;
-            let s2 = evaluate_node(str2, env)?;
+            let s1 = evaluate_node(str1, Rc::clone(&env), debug)?;
+            let s2 = evaluate_node(str2, Rc::clone(&env), debug)?;
             if let (Value::String(s1), Value::String(s2)) = (s1, s2) {
                 Ok(Value::String(format!("{}{}", s1, s2)))
             } else {
@@ -304,12 +473,12 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::ToString(expr) => {
-            let val = evaluate_node(expr, env)?;
+            let val = evaluate_node(expr, Rc::clone(&env), debug)?;
             Ok(Value::String(value_to_string(&val)))
         }
 
         AstNode::ToNum(expr) => {
-            let val = evaluate_node(expr, env)?;
+            let val = evaluate_node(expr, Rc::clone(&env), debug)?;
             if let Value::String(s) = val {
                 if let Ok(n) = s.parse::<i32>() {
                     Ok(Value::Integer(n))
@@ -336,16 +505,13 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
                     ));
                 }
 
-                // Execute the body first (like do-while)
-                let result = evaluate_node(body, env)?;
+                let result = evaluate_node(body, Rc::clone(&env), debug)?;
 
-                // Check if this was a return statement
-                if env.return_value.is_some() {
+                if env.borrow().return_value.is_some() {
                     return Ok(result);
                 }
 
-                // Then check the condition
-                match evaluate_node(condition, env)? {
+                match evaluate_node(condition, Rc::clone(&env), debug)? {
                     Value::Boolean(true) => break,
                     Value::Boolean(false) => continue,
                     _ => return Err("REPEAT UNTIL condition must evaluate to boolean".to_string()),
@@ -355,16 +521,26 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::ForEach(var_name, list, body) => {
-            let list_val = evaluate_node(list, env)?;
-            if let Value::List(elements) = list_val {
-                let mut result = Value::Unit;
-                for element in elements {
-                    env.set(var_name.clone(), element);
-                    result = evaluate_node(body, env)?;
+            let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
+            match list_val {
+                Value::List(elements) => {
+                    let mut result = Value::Unit;
+                    for element in elements {
+                        env.borrow_mut().set(var_name.clone(), element);
+                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                    }
+                    Ok(result)
                 }
-                Ok(result)
-            } else {
-                Err("FOR EACH requires list".to_string())
+                Value::String(s) => {
+                    let mut result = Value::Unit;
+                    for c in s.chars() {
+                        env.borrow_mut()
+                            .set(var_name.clone(), Value::String(c.to_string()));
+                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                    }
+                    Ok(result)
+                }
+                _ => Err("FOR EACH requires list or string".to_string()),
             }
         }
 
@@ -373,20 +549,21 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         AstNode::FormattedString(template, vars) => {
             let mut values = Vec::new();
             for var_name in vars {
-                if let Some(val) = env.get(var_name) {
+                if let Some(val) = env.borrow().get(var_name) {
                     values.push(value_to_string(&val));
                 } else {
                     return Err(format!("Undefined variable in format string: {}", var_name));
                 }
             }
-            let result = template.replace("{}", "{}");
-            Ok(Value::String(
-                format!("{}", result).replace("{}", &values.join(" ")),
-            ))
+            let mut result = template.to_string();
+            for value in values {
+                result = result.replacen("{}", &value, 1);
+            }
+            Ok(Value::String(result))
         }
 
         AstNode::Length(list) => {
-            let list_val = evaluate_node(list, env)?;
+            let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
             match list_val {
                 Value::List(elements) => Ok(Value::Integer(elements.len() as i32)),
                 Value::String(s) => Ok(Value::Integer(s.len() as i32)),
@@ -394,71 +571,88 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
             }
         }
 
-        AstNode::ListInsert(list, index, value) => {
-            let list_val = evaluate_node(list, env)?;
-            let index_val = evaluate_node(index, env)?;
-            let insert_val = evaluate_node(value, env)?;
+        AstNode::ListInsert(list, index, value) | AstNode::Insert(list, index, value) => {
+            let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
+            let insert_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
-            if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_val) {
-                let idx = i - 1; // Convert 1-based to 0-based
-                if idx >= 0 && (idx as usize) <= elements.len() {
-                    elements.insert(idx as usize, insert_val);
-                    if let AstNode::Identifier(name) = &**list {
-                        env.set(name.clone(), Value::List(elements.clone()));
-                        Ok(Value::List(elements))
+            if let AstNode::Identifier(name) = &**list {
+                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
+                    elements
+                } else {
+                    return Err(format!("Variable {} is not a list", name));
+                };
+
+                if let Value::Integer(i) = index_val {
+                    let idx = i - 1;
+                    if idx >= 0 && (idx as usize) <= elements.len() {
+                        let mut new_elements = elements.clone();
+                        new_elements.insert(idx as usize, insert_val.clone());
+                        env.borrow_mut()
+                            .set(name.clone(), Value::List(new_elements));
+                        Ok(insert_val)
                     } else {
-                        Err("Invalid list target for INSERT".to_string())
+                        Err("List index out of bounds".to_string())
                     }
                 } else {
-                    Err("List index out of bounds".to_string())
+                    Err("Invalid list index".to_string())
                 }
             } else {
-                Err("INSERT requires a list and integer index".to_string())
+                Err("INSERT requires a list variable".to_string())
             }
         }
 
-        AstNode::ListAppend(list, value) => {
-            let list_val = evaluate_node(list, env)?;
-            let append_val = evaluate_node(value, env)?;
+        AstNode::ListAppend(list, value) | AstNode::Append(list, value) => {
+            let append_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
-            if let Value::List(mut elements) = list_val {
-                elements.push(append_val);
-                if let AstNode::Identifier(name) = &**list {
-                    env.set(name.clone(), Value::List(elements.clone()));
-                    Ok(Value::List(elements))
+            if let AstNode::Identifier(name) = &**list {
+                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
+                    elements
                 } else {
-                    Err("Invalid list target for APPEND".to_string())
-                }
+                    return Err(format!("Variable {} is not a list", name));
+                };
+
+                let mut new_elements = elements.clone();
+                new_elements.push(append_val.clone());
+                env.borrow_mut()
+                    .set(name.clone(), Value::List(new_elements));
+                Ok(append_val)
             } else {
-                Err("APPEND requires a list argument".to_string())
+                Err("APPEND requires a list variable".to_string())
             }
         }
 
-        AstNode::ListRemove(list, index) => {
-            let list_val = evaluate_node(list, env)?;
-            let index_val = evaluate_node(index, env)?;
+        AstNode::ListRemove(list, index) | AstNode::Remove(list, index) => {
+            let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
-            if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_val) {
-                let idx = i - 1; // Convert 1-based to 0-based
-                if idx >= 0 && (idx as usize) < elements.len() {
-                    elements.remove(idx as usize);
-                    if let AstNode::Identifier(name) = &**list {
-                        env.set(name.clone(), Value::List(elements.clone()));
-                        Ok(Value::List(elements))
+            if let AstNode::Identifier(name) = &**list {
+                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
+                    elements
+                } else {
+                    return Err(format!("Variable {} is not a list", name));
+                };
+
+                if let Value::Integer(i) = index_val {
+                    let idx = i - 1;
+                    if idx >= 0 && (idx as usize) < elements.len() {
+                        let mut new_elements = elements.clone();
+                        let removed_value = new_elements.remove(idx as usize);
+                        env.borrow_mut()
+                            .set(name.clone(), Value::List(new_elements));
+                        Ok(removed_value)
                     } else {
-                        Err("Invalid list target for REMOVE".to_string())
+                        Err("List index out of bounds".to_string())
                     }
                 } else {
-                    Err("List index out of bounds".to_string())
+                    Err("REMOVE requires an integer index".to_string())
                 }
             } else {
-                Err("REMOVE requires a list and integer index".to_string())
+                Err("REMOVE requires a list variable".to_string())
             }
         }
 
         AstNode::Random(min, max) => {
-            let min_val = evaluate_node(min, env)?;
-            let max_val = evaluate_node(max, env)?;
+            let min_val = evaluate_node(min, Rc::clone(&env), debug)?;
+            let max_val = evaluate_node(max, Rc::clone(&env), debug)?;
 
             match (min_val, max_val) {
                 (Value::Integer(min_int), Value::Integer(max_int)) => {
@@ -473,37 +667,107 @@ fn evaluate_node(node: &AstNode, env: &mut Environment) -> Result<Value, String>
         }
 
         AstNode::ClassDecl(name, body) => {
-            env.classes.insert(name.clone(), (**body).clone());
+            env.borrow_mut()
+                .classes
+                .insert(name.clone(), (**body).clone());
             Ok(Value::Unit)
         }
 
         AstNode::Import(path) => {
-            // Read the file content
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read import file {}: {}", path, e))?;
 
-            // Create a new lexer for the content
             let mut lexer = crate::lexer::Lexer::new(&content);
             let tokens = lexer.tokenize();
 
-            // Parse the imported content
             let imported_ast = crate::parser::parse(tokens, false)
                 .map_err(|e| format!("Failed to parse import file {}: {}", path, e))?;
 
-            // Evaluate the imported code in the current environment
-            evaluate_node(&imported_ast, env)?;
+            evaluate_node(&imported_ast, Rc::clone(&env), debug)?;
 
             Ok(Value::Unit)
         }
 
         AstNode::Return(expr) => {
-            let value = evaluate_node(expr, env)?;
-            env.return_value = Some(value.clone());
-            // Immediately return from the procedure
-            return Ok(value);
+            let value = evaluate_node(expr, Rc::clone(&env), debug)?;
+            env.borrow_mut().return_value = Some(value);
+            Err("Return".to_string())
         }
 
-        // Add implementations for remaining nodes as needed
+        AstNode::Sort(list_expr) => {
+            let list_val = evaluate_node(list_expr, Rc::clone(&env), debug)?;
+            if let Value::List(mut elements) = list_val {
+                elements.sort_by(|a, b| {
+                    let a_str = value_to_string(a);
+                    let b_str = value_to_string(b);
+                    a_str.cmp(&b_str)
+                });
+                Ok(Value::List(elements.clone()))
+            } else {
+                Err("SORT requires a list as an argument".to_string())
+            }
+        }
+
+        AstNode::Remove(list_expr, index_expr) => {
+            if let (AstNode::Identifier(name), Value::Integer(i)) = (
+                &**list_expr,
+                evaluate_node(index_expr, Rc::clone(&env), debug)?,
+            ) {
+                let idx = i - 1;
+                let mut env_mut = env.borrow_mut();
+                if let Some(Value::List(mut elements)) = env_mut.get(name) {
+                    if idx >= 0 && (idx as usize) < elements.len() {
+                        let removed_value = elements.remove(idx as usize);
+                        env_mut.set(name.clone(), Value::List(elements));
+                        Ok(removed_value)
+                    } else {
+                        Err("List index out of bounds".to_string())
+                    }
+                } else {
+                    Err(format!("Variable {} is not a list", name))
+                }
+            } else {
+                Err("REMOVE requires a list variable and an integer index".to_string())
+            }
+        }
+        AstNode::Append(list_expr, value_expr) => {
+            let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
+            if let AstNode::Identifier(name) = &**list_expr {
+                let mut env_mut = env.borrow_mut();
+                if let Some(Value::List(mut elements)) = env_mut.get(name) {
+                    elements.push(value.clone());
+                    env_mut.set(name.clone(), Value::List(elements));
+                    Ok(value)
+                } else {
+                    Err(format!("Variable {} is not a list", name))
+                }
+            } else {
+                Err("APPEND requires a list variable".to_string())
+            }
+        }
+        AstNode::Insert(list_expr, index_expr, value_expr) => {
+            let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
+            if let (AstNode::Identifier(name), Value::Integer(i)) = (
+                &**list_expr,
+                evaluate_node(index_expr, Rc::clone(&env), debug)?,
+            ) {
+                let idx = i - 1;
+                let mut env_mut = env.borrow_mut();
+                if let Some(Value::List(mut elements)) = env_mut.get(name) {
+                    if idx >= 0 && (idx as usize) <= elements.len() {
+                        elements.insert(idx as usize, value.clone());
+                        env_mut.set(name.clone(), Value::List(elements));
+                        Ok(value)
+                    } else {
+                        Err("List index out of bounds".to_string())
+                    }
+                } else {
+                    Err(format!("Variable {} is not a list", name))
+                }
+            } else {
+                Err("INSERT requires a list variable and an integer index".to_string())
+            }
+        }
         _ => Err(format!("Unimplemented node type: {:?}", node)),
     }
 }
@@ -517,8 +781,7 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
             if *b == 0 {
                 Err("Division by zero".to_string())
             } else {
-                // Changed to ensure correct mid calculation
-                Ok(Value::Integer((a + (b - 1) / 2) / b))
+                Ok(Value::Integer(a / b))
             }
         }
         (Value::Integer(a), BinaryOperator::Mod, Value::Integer(b)) => {
@@ -528,7 +791,7 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
                 Ok(Value::Integer(a % b))
             }
         }
-        // Add more operator implementations
+
         (Value::Integer(a), BinaryOperator::Eq, Value::Integer(b)) => Ok(Value::Boolean(a == b)),
         (Value::Integer(a), BinaryOperator::NotEq, Value::Integer(b)) => Ok(Value::Boolean(a != b)),
         (Value::Integer(a), BinaryOperator::Lt, Value::Integer(b)) => Ok(Value::Boolean(a < b)),
@@ -536,20 +799,16 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         (Value::Integer(a), BinaryOperator::Gt, Value::Integer(b)) => Ok(Value::Boolean(a > b)),
         (Value::Integer(a), BinaryOperator::GtEq, Value::Integer(b)) => Ok(Value::Boolean(a >= b)),
 
-        // Add boolean operators
         (Value::Boolean(a), BinaryOperator::And, Value::Boolean(b)) => Ok(Value::Boolean(*a && *b)),
         (Value::Boolean(a), BinaryOperator::Or, Value::Boolean(b)) => Ok(Value::Boolean(*a || *b)),
 
-        // String comparisons
         (Value::String(a), BinaryOperator::Eq, Value::String(b)) => Ok(Value::Boolean(a == b)),
         (Value::String(a), BinaryOperator::NotEq, Value::String(b)) => Ok(Value::Boolean(a != b)),
 
-        // Allow string concatenation with +
         (Value::String(a), BinaryOperator::Add, Value::String(b)) => {
             Ok(Value::String(format!("{}{}", a, b)))
         }
 
-        // Handle float operations
         (Value::Float(a), BinaryOperator::Add, Value::Float(b)) => Ok(Value::Float(a + b)),
         (Value::Float(a), BinaryOperator::Sub, Value::Float(b)) => Ok(Value::Float(a - b)),
         (Value::Float(a), BinaryOperator::Mul, Value::Float(b)) => Ok(Value::Float(a * b)),
@@ -561,7 +820,6 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
             }
         }
 
-        // Handle mixed integer/float operations by promoting to float
         (Value::Integer(a), BinaryOperator::Add, Value::Float(b)) => {
             Ok(Value::Float(*a as f32 + b))
         }
@@ -595,8 +853,9 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
             }
         }
 
-        // Handle integer division to produce float result
-        // ...rest of existing match arms...
+        (Value::Boolean(a), BinaryOperator::Eq, Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
+        (Value::Boolean(a), BinaryOperator::NotEq, Value::Boolean(b)) => Ok(Value::Boolean(a != b)),
+
         _ => Err(format!(
             "Invalid operation: {:?} {:?} {:?}",
             left, op, right

@@ -24,6 +24,14 @@ Accepts a value from the user (command line) and returns the input value.
 
 `a / b`
 
+Integer division that rounds down (floor division). For example:
+
+- `5 / 2` evaluates to `2`
+- `-5 / 2` evaluates to `-2`
+- `19 / 4` evaluates to `4`
+
+When operating on two integers, the result will always be an integer, rounded down to the nearest whole number.
+
 `a MOD b`
 
 The arithmetic operators +, -, *, /, and MOD are used to perform arithmetic on a and b.
@@ -141,6 +149,10 @@ Removes the item at index i in aList and shifts to the left any values at indice
 
 Evaluates to the number of elements in aList (1 through length).
 
+`SORT(aList)`
+
+Returns a new list that is a sorted version of `aList` (must be an array of integers). The sorting is done in ascending order.
+
 ```text
 FOR EACH item IN aList
 {
@@ -184,12 +196,12 @@ String (32 bit)
 Boolean
 
 ## BuiltIn Functions
+
 `Substring("abcd", start, end)`
 Returns a string of characters from index `start` to index `end` of the given string
 
 `Concat("ab", "cd")`
 Returns a single string with the two given strings combined
-
 
 ## Outside of College Board - Extras
 
@@ -214,7 +226,7 @@ Prints the value of a, without a new line character.
 
 Imports a library (including functions & variables defined in that file) from a file.
 
-```
+```psl
 CLASS className()
 {
   ...procs
