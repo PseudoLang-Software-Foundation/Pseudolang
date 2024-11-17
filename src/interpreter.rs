@@ -165,11 +165,39 @@ fn evaluate_node(
             }
         }
 
-        AstNode::BinaryOp(left, op, right) => {
-            let left_val = evaluate_node(left, Rc::clone(&env), debug)?;
-            let right_val = evaluate_node(right, Rc::clone(&env), debug)?;
-            evaluate_binary_op(&left_val, op, &right_val)
-        }
+        AstNode::BinaryOp(left_expr, op, right_expr) => match op {
+            BinaryOperator::And => {
+                let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
+                if let Value::Boolean(false) = left_val {
+                    Ok(Value::Boolean(false))
+                } else {
+                    let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
+                    if let Value::Boolean(right_bool) = right_val {
+                        Ok(Value::Boolean(right_bool))
+                    } else {
+                        Err("Right operand of AND must be boolean".to_string())
+                    }
+                }
+            }
+            BinaryOperator::Or => {
+                let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
+                if let Value::Boolean(true) = left_val {
+                    Ok(Value::Boolean(true))
+                } else {
+                    let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
+                    if let Value::Boolean(right_bool) = right_val {
+                        Ok(Value::Boolean(right_bool))
+                    } else {
+                        Err("Right operand of OR must be boolean".to_string())
+                    }
+                }
+            }
+            _ => {
+                let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
+                let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
+                evaluate_binary_op(&left_val, op, &right_val)
+            }
+        },
 
         AstNode::UnaryOp(op, expr) => {
             let val = evaluate_node(expr, Rc::clone(&env), debug)?;
@@ -734,16 +762,13 @@ fn evaluate_node(
         }
 
         AstNode::RepeatUntil(body, condition) => {
-            let max_iterations = 1000;
+            let max_iterations = 1000000;
             let mut iterations = 0;
 
             loop {
                 iterations += 1;
                 if iterations > max_iterations {
-                    return Err(format!(
-                        "Maximum loop iterations ({}) exceeded. Binary search may be stuck.",
-                        max_iterations
-                    ));
+                    return Err("Maximum loop iterations exceeded".to_string());
                 }
 
                 let result = evaluate_node(body, Rc::clone(&env), debug)?;
@@ -752,7 +777,8 @@ fn evaluate_node(
                     return Ok(result);
                 }
 
-                match evaluate_node(condition, Rc::clone(&env), debug)? {
+                let cond_val = evaluate_node(condition, Rc::clone(&env), debug)?;
+                match cond_val {
                     Value::Boolean(true) => break,
                     Value::Boolean(false) => continue,
                     _ => return Err("REPEAT UNTIL condition must evaluate to boolean".to_string()),
@@ -938,12 +964,21 @@ fn evaluate_node(
         AstNode::Sort(list_expr) => {
             let list_val = evaluate_node(list_expr, Rc::clone(&env), debug)?;
             if let Value::List(mut elements) = list_val {
-                elements.sort_by(|a, b| {
-                    let a_str = value_to_string(a);
-                    let b_str = value_to_string(b);
-                    a_str.cmp(&b_str)
+                elements.sort_by(|a, b| match (a, b) {
+                    (Value::Integer(a_int), Value::Integer(b_int)) => a_int.cmp(b_int),
+                    (Value::Float(a_float), Value::Float(b_float)) => a_float
+                        .partial_cmp(b_float)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Value::Integer(a_int), Value::Float(b_float)) => (*a_int as f32)
+                        .partial_cmp(b_float)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Value::Float(a_float), Value::Integer(b_int)) => a_float
+                        .partial_cmp(&(*b_int as f32))
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Value::String(a_str), Value::String(b_str)) => a_str.cmp(b_str),
+                    _ => std::cmp::Ordering::Equal,
                 });
-                Ok(Value::List(elements.clone()))
+                Ok(Value::List(elements))
             } else {
                 Err("SORT requires a list as an argument".to_string())
             }

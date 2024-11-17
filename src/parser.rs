@@ -969,7 +969,11 @@ impl Parser {
                 self.advance();
             }
 
-            Some(Box::new(self.parse_block(debug)?))
+            if self.peek() == Some(&Token::If) {
+                Some(Box::new(self.parse_if(debug)?))
+            } else {
+                Some(Box::new(self.parse_block(debug)?))
+            }
         } else {
             None
         };

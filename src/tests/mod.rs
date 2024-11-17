@@ -1156,4 +1156,237 @@ DISPLAY(str[0])"#,
             "Hello, World!",
         );
     }
+
+    #[test]
+    fn test_merge_sort() {
+        assert_output(
+            r#"
+            PROCEDURE merge(left, right) {
+                result <- []
+                leftIndex <- 1
+                rightIndex <- 1
+                
+                REPEAT UNTIL(leftIndex > LENGTH(left) AND rightIndex > LENGTH(right)) {
+                    IF(leftIndex > LENGTH(left)) {
+                        APPEND(result, right[rightIndex])
+                        rightIndex <- rightIndex + 1
+                    } ELSE IF(rightIndex > LENGTH(right)) {
+                        APPEND(result, left[leftIndex])
+                        leftIndex <- leftIndex + 1
+                    } ELSE IF(left[leftIndex] <= right[rightIndex]) {
+                        APPEND(result, left[leftIndex])
+                        leftIndex <- leftIndex + 1
+                    } ELSE {
+                        APPEND(result, right[rightIndex])
+                        rightIndex <- rightIndex + 1
+                    }
+                }
+                RETURN(result)
+            }
+
+            PROCEDURE mergeSort(arr) {
+                IF(LENGTH(arr) <= 1) {
+                    RETURN(arr)
+                }
+                
+                mid <- LENGTH(arr) / 2
+                left <- []
+                right <- []
+                
+                i <- 1
+                REPEAT mid TIMES {
+                    APPEND(left, arr[i])
+                    i <- i + 1
+                }
+                
+                REPEAT LENGTH(arr) - mid TIMES {
+                    APPEND(right, arr[i])
+                    i <- i + 1
+                }
+                
+                left <- mergeSort(left)
+                right <- mergeSort(right)
+                RETURN(merge(left, right))
+            }
+
+            arr <- [64, 34, 25, 12, 22, 11, 90]
+            DISPLAY(mergeSort(arr))"#,
+            "[11, 12, 22, 25, 34, 64, 90]",
+        );
+    }
+
+    #[test]
+    fn test_binary_search() {
+        assert_output(
+            r#"
+            PROCEDURE binarySearch(arr, target) {
+                left <- 1
+                right <- LENGTH(arr)
+                
+                REPEAT UNTIL(left > right) {
+                    mid <- (left + right) / 2
+                    
+                    IF(arr[mid] = target) {
+                        RETURN(mid)
+                    } ELSE IF(arr[mid] < target) {
+                        left <- mid + 1
+                    } ELSE {
+                        right <- mid - 1
+                    }
+                }
+                RETURN(-1)
+            }
+
+            arr <- [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            DISPLAY(binarySearch(arr, 7))
+            DISPLAY(binarySearch(arr, 11))"#,
+            "7\n-1",
+        );
+    }
+
+    #[test]
+    fn test_quick_sort() {
+        assert_output(
+            r#"
+            PROCEDURE partition(arr, low, high) {
+    pivot <- arr[high]
+    i <- low - 1
+
+    j <- low
+    REPEAT high - low TIMES {
+        IF(arr[j] <= pivot) {
+            i <- i + 1
+            temp <- arr[i]
+            arr[i] <- arr[j]
+            arr[j] <- temp
+        }
+        j <- j + 1
+    }
+
+    temp <- arr[i + 1]
+    arr[i + 1] <- arr[high]
+    arr[high] <- temp
+    RETURN([arr, i + 1])
+}
+PROCEDURE quickSort(arr, low, high) {
+    IF(low < high) {
+        partitionResult <- partition(arr, low, high)
+        arr <- partitionResult[1]
+        pi <- partitionResult[2]
+        arr <- quickSort(arr, low, pi - 1)
+        arr <- quickSort(arr, pi + 1, high)
+    }
+    RETURN(arr)
+}
+
+arr <- [64, 34, 25, 12, 22, 11, 90]
+arr <- quickSort(arr, 1, LENGTH(arr))
+DISPLAY(arr)"#,
+            "[11, 12, 22, 25, 34, 64, 90]",
+        );
+    }
+
+    #[test]
+    fn test_insertion_sort() {
+        assert_output(
+            r#"
+            PROCEDURE insertionSort(arr) {
+                    i <- 2
+                    REPEAT LENGTH(arr) - 1 TIMES {
+                        key <- arr[i]
+                        j <- i - 1
+                        
+                        IF(j >= 1 AND arr[j] > key) {
+                            REPEAT UNTIL(j < 1 OR arr[j] <= key) {
+                                arr[j + 1] <- arr[j]
+                                j <- j - 1
+                            }
+                        }
+                        
+                        arr[j + 1] <- key
+                        i <- i + 1
+                    }
+                    RETURN(arr)
+                }
+
+                arr <- [64, 34, 25, 12, 22, 11, 90]
+                DISPLAY(insertionSort(arr))"#,
+            "[11, 12, 22, 25, 34, 64, 90]",
+        );
+    }
+
+    #[test]
+    fn test_selection_sort() {
+        assert_output(
+            r#"
+            PROCEDURE selectionSort(arr) {
+                n <- LENGTH(arr)
+                i <- 1
+                
+                REPEAT n - 1 TIMES {
+                    minIdx <- i
+                    j <- i + 1
+                    
+                    REPEAT n - i TIMES {
+                        IF(arr[j] < arr[minIdx]) {
+                            minIdx <- j
+                        }
+                        j <- j + 1
+                    }
+                    
+                    IF(minIdx NOT= i) {
+                        temp <- arr[minIdx]
+                        arr[minIdx] <- arr[i]
+                        arr[i] <- temp
+                    }
+                    i <- i + 1
+                }
+                RETURN(arr)
+            }
+
+            arr <- [64, 34, 25, 12, 22, 11, 90]
+            DISPLAY(selectionSort(arr))"#,
+            "[11, 12, 22, 25, 34, 64, 90]",
+        );
+    }
+
+    #[test]
+    fn test_linear_search() {
+        assert_output(
+            r#"
+            PROCEDURE linearSearch(arr, target) {
+                i <- 1
+                REPEAT LENGTH(arr) TIMES {
+                    IF(arr[i] = target) {
+                        RETURN(i)
+                    }
+                    i <- i + 1
+                }
+                RETURN(-1)
+            }
+
+            arr <- [64, 34, 25, 12, 22, 11, 90]
+            DISPLAY(linearSearch(arr, 22))
+            DISPLAY(linearSearch(arr, 100))"#,
+            "5\n-1",
+        );
+    }
+
+    #[test]
+    fn test_gcd_recursive() {
+        assert_output(
+            r#"
+            PROCEDURE gcd(a, b) {
+                IF(b = 0) {
+                    RETURN(a)
+                }
+                RETURN(gcd(b, a MOD b))
+            }
+            
+            DISPLAY(gcd(48, 18))
+            DISPLAY(gcd(54, 24))
+            DISPLAY(gcd(17, 5))"#,
+            "6\n6\n1",
+        );
+    }
 }

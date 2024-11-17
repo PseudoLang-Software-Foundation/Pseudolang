@@ -27,56 +27,16 @@ jobs:
       - name: Run Tests
         run: cargo test --verbose
 
-  build-windows:
-    name: Build Windows
-    needs: test
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-          target: x86_64-pc-windows-gnu
-
-      - name: Build Release
-        run: cargo build --release --target x86_64-pc-windows-gnu
-
-      - name: Prepare Artifacts
-        shell: pwsh
-        run: |
-          New-Item -Path release -ItemType Directory -Force
-          Copy-Item "target\x86_64-pc-windows-gnu\release\fplc.exe" -Destination "release\fplc-x64.exe" -Force
-
-      - name: Install NSIS
-        run: choco install nsis -y
-          
-      - name: Prepare Installer Files
-        shell: pwsh
-        run: |
-          Copy-Item "target\x86_64-pc-windows-gnu\release\fplc.exe" -Destination "installer\fplc.exe" -Force
-          Copy-Item "LICENSE" -Destination "installer\" -Force
-          New-Item -Path "release\installer" -ItemType Directory -Force
-          
-      - name: Build Installer
-        run: makensis installer\pseudolang.nsi
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: pseudolang-windows
-          path: |
-            release/*
-            release/installer/*
-          retention-days: 7
-
-  build-linux:
-    name: Build Linux
+  build:
+    name: Build Multi-Platform
     needs: test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-gnu
+          - x86_64-unknown-linux-gnu
+    
     steps:
       - uses: actions/checkout@v3
       
@@ -86,26 +46,34 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          target: ${{ matrix.target }}
+
+      - name: Install Cross
+        run: cargo install cross
 
       - name: Build Release
-        run: cargo build --release
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Prepare Artifacts
         run: |
           mkdir -p release
-          cp target/release/fplc release/fplc-linux-x64
-          chmod +x release/fplc-linux-x64
+          if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
+            cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
+          else
+            cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
+            chmod +x release/fplc-linux-x64
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: pseudolang-linux
+          name: pseudolang-${{ matrix.target }}
           path: release/*
           retention-days: 7
 
   publish:
     name: Publish Artifacts
-    needs: [build-windows, build-linux]
+    needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
@@ -128,30 +96,3 @@ jobs:
           name: pseudolang-all-platforms
           path: final_release/*
           retention-days: 30
-
-  release:
-    name: Create Release
-    needs: [build-windows, build-linux]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: artifacts
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/pseudolang-windows/release/installer/pseudolang-setup-x64.exe
-            artifacts/pseudolang-windows/release/fplc-x64.exe
-            artifacts/pseudolang-linux/fplc-linux-x64
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
