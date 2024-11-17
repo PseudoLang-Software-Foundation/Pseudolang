@@ -1,5 +1,5 @@
 <div align="center">
-  <h1><a href="https://pseudo-lang.org/">PseudoLang</a></h1>
+  <h1><a href="https://pseudo-lang.org/">Pseudolang</a></h1>
 </div>
 
 <p align="center">
@@ -9,12 +9,12 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.1-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.2-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main">Nightly Link</a>
   </p>
 </div>
 
-Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by The College Board's Pseudocode
+Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by College Board's Pseudocode.
 
 This project aims to fully support Windows and Linux.
 
@@ -50,19 +50,13 @@ The **examples** folder contains multiple example files for Pseudolang. It is al
 
 - [ ] Web version
 - [ ] Math functions
-- [ ] Console input
 - [ ] Compiler optimizations
 - [ ] Installer
-- [ ] Library support (remote procedures, calls, etc)
+- [ ] Library support (remote procedures, calls, networking, etc)
 - [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices))
-- [ ] Console input
-- [ ] Networking
-- [ ] Man page and and help menu on simple command run
-- [ ] Examples
+- [ ] Man page and and better help menu on simple command run
 - [ ] VSCode syntax highlighter extension and runner
 - [ ] GitHub issue template
-- [ ] Better error handling (suggestions, etc)
-- [ ] Code todos
 
 ## Issues
 

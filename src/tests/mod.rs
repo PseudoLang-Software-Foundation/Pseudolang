@@ -255,6 +255,35 @@ mod test {
             "#,
             "2",
         );
+
+        assert_output(
+            r#"
+            a <- [1, 2, 3]
+            b <- [4, 5, 6]
+            DISPLAY(a + b)
+            "#,
+            "[1, 2, 3, 4, 5, 6]",
+        );
+
+        assert_output(
+            r#"
+            empty <- []
+            full <- [1, 2, 3]
+            DISPLAY(empty + full)
+            DISPLAY(full + empty)
+            "#,
+            "[1, 2, 3]\n[1, 2, 3]",
+        );
+
+        assert_output(
+            r#"
+            a <- [1]
+            b <- [2]
+            c <- [3]
+            DISPLAY(a + b + c)
+            "#,
+            "[1, 2, 3]",
+        );
     }
 
     #[test]
@@ -654,6 +683,24 @@ mod test {
             "#,
             "8",
         );
+
+        assert_output(
+            r#"
+            PROCEDURE factorial(n)
+            {
+                IF(n <= 1)
+                {
+                    RETURN(1)
+                }
+                ELSE
+                {
+                    RETURN(n * factorial(n - 1))
+                }
+            }
+            DISPLAY(factorial(5))
+            "#,
+            "120",
+        );
     }
 
     #[test]
@@ -886,27 +933,6 @@ DISPLAY(str[0])"#,
     }
 
     #[test]
-    fn test_factorial() {
-        assert_output(
-            r#"
-            PROCEDURE factorial(n)
-            {
-                IF(n <= 1)
-                {
-                    RETURN(1)
-                }
-                ELSE
-                {
-                    RETURN(n * factorial(n - 1))
-                }
-            }
-            DISPLAY(factorial(5))
-            "#,
-            "120",
-        );
-    }
-
-    #[test]
     fn test_string_reverse() {
         assert_output(
             r#"
@@ -953,6 +979,150 @@ DISPLAY(str[0])"#,
                     DISPLAY(bubbleSort(a))"#,
             "[1, 2, 2, 3, 3, 4, 7]",
         );
+    }
+
+    #[test]
+    fn test_math_functions() {
+        assert_output("DISPLAY(ABS(-5.5))", "5.5");
+        assert_output("DISPLAY(ABS(3))", "3");
+
+        assert_output("DISPLAY(CEIL(3.1))", "4");
+        assert_output("DISPLAY(CEIL(-3.1))", "-3");
+
+        assert_output("DISPLAY(FLOOR(3.9))", "3");
+        assert_output("DISPLAY(FLOOR(-3.1))", "-4");
+
+        assert_output("DISPLAY(POW(2, 3))", "8");
+        assert_output("DISPLAY(POW(2.5, 2))", "6.25");
+
+        assert_output("DISPLAY(SQRT(16))", "4");
+        assert_output("DISPLAY(SQRT(2))", "1.4142135");
+
+        assert_output("DISPLAY(SIN(0))", "0");
+        assert_output("DISPLAY(SIN(1.5707964))", "1");
+
+        assert_output("DISPLAY(COS(0))", "1");
+        assert_output("DISPLAY(COS(3.1415927))", "-1");
+
+        assert_output("DISPLAY(TAN(0))", "0");
+        assert_output("DISPLAY(TAN(0.7853982))", "1");
+
+        assert_output("DISPLAY(ASIN(0))", "0");
+        assert_output("DISPLAY(ASIN(1))", "1.5707964");
+
+        assert_output("DISPLAY(ACOS(1))", "0");
+        assert_output("DISPLAY(ACOS(-1))", "3.1415927");
+
+        assert_output("DISPLAY(ATAN(0))", "0");
+        assert_output("DISPLAY(ATAN(1))", "0.7853982");
+
+        assert_output("DISPLAY(EXP(0))", "1");
+        assert_output("DISPLAY(EXP(1))", "2.7182817");
+
+        assert_output("DISPLAY(LOG(1))", "0");
+        assert_output("DISPLAY(LOG(2.7182817))", "0.99999994");
+
+        assert_output("DISPLAY(LOGTEN(10))", "1");
+        assert_output("DISPLAY(LOGTEN(100))", "2");
+
+        assert_output("DISPLAY(LOGTWO(2))", "1");
+        assert_output("DISPLAY(LOGTWO(8))", "3");
+
+        assert_output("DISPLAY(GCD(48, 18))", "6");
+        assert_output("DISPLAY(GCD(17, 5))", "1");
+
+        assert_output("DISPLAY(FACTORIAL(0))", "1");
+        assert_output("DISPLAY(FACTORIAL(5))", "120");
+
+        assert_output("DISPLAY(DEGREES(3.1415927))", "180");
+        assert_output("DISPLAY(DEGREES(1.5707964))", "90");
+
+        assert_output("DISPLAY(RADIANS(180))", "3.1415927");
+        assert_output("DISPLAY(RADIANS(90))", "1.5707964");
+
+        assert_output("DISPLAY(HYPOT(3, 4))", "5");
+        assert_output("DISPLAY(HYPOT(5, 12))", "13");
+
+        assert_output("DISPLAY(ABS(-5.5))", "5.5");
+        assert_output("DISPLAY(ABS(-42))", "42");
+        assert_output("DISPLAY(POW(-2, 3))", "-8");
+        assert_output("DISPLAY(POW(-2, 2))", "4");
+
+        assert_output("DISPLAY(FLOOR(-3.1))", "-4");
+        assert_output("DISPLAY(FLOOR(-3.9))", "-4");
+        assert_output("DISPLAY(CEIL(-3.1))", "-3");
+        assert_output("DISPLAY(CEIL(-3.9))", "-3");
+
+        assert_output("DISPLAY(SIN(-1.5707964))", "-1");
+        assert_output("DISPLAY(COS(-3.1415927))", "-1");
+        assert_output("DISPLAY(TAN(-0.7853982))", "-1");
+
+        assert_output("DISPLAY(ASIN(-1))", "-1.5707964");
+        assert_output("DISPLAY(ACOS(0))", "1.5707964");
+        assert_output("DISPLAY(ATAN(-1))", "-0.7853982");
+
+        assert_output("DISPLAY(LOG(2.7182817))", "0.99999994");
+        assert_output("DISPLAY(LOGTEN(0.1))", "-1");
+        assert_output("DISPLAY(LOGTWO(0.5))", "-1");
+
+        assert_output("DISPLAY(GCD(-48, 18))", "6");
+        assert_output("DISPLAY(GCD(-48, -18))", "6");
+
+        assert_output("DISPLAY(DEGREES(-3.1415927))", "-180");
+        assert_output("DISPLAY(RADIANS(-180))", "-3.1415927");
+
+        assert_output("DISPLAY(HYPOT(-3, 4))", "5");
+        assert_output("DISPLAY(HYPOT(-3, -4))", "5");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_math_error_handling() {
+        assert!(run_test("DISPLAY(SQRT(-1))").is_err());
+        assert!(run_test("DISPLAY(FACTORIAL(-1))").is_err());
+        assert!(run_test("DISPLAY(LOG(-1))").is_err());
+        assert!(run_test("DISPLAY(LOGTEN(-1))").is_err());
+        assert!(run_test("DISPLAY(LOGTWO(-1))").is_err());
+
+        assert!(run_test("DISPLAY(GCD(1.5, 2))").is_err());
+        assert!(run_test("DISPLAY(GCD(1, TRUE))").is_err());
+
+        assert!(run_test("DISPLAY(FACTORIAL(1.5))").is_err());
+        assert!(run_test("DISPLAY(FACTORIAL(TRUE))").is_err());
+
+        assert!(run_test("DISPLAY(SQRT(-1))").is_err());
+        assert!(run_test("DISPLAY(SQRT(-4))").is_err());
+        assert!(run_test("DISPLAY(LOG(-1))").is_err());
+        assert!(run_test("DISPLAY(LOG(0))").is_err());
+        assert!(run_test("DISPLAY(LOGTEN(-1))").is_err());
+        assert!(run_test("DISPLAY(LOGTEN(0))").is_err());
+        assert!(run_test("DISPLAY(LOGTWO(-1))").is_err());
+        assert!(run_test("DISPLAY(LOGTWO(0))").is_err());
+
+        assert!(run_test("DISPLAY(GCD(1.5, 2))").is_err());
+        assert!(run_test("DISPLAY(GCD(1, TRUE))").is_err());
+        assert!(run_test("DISPLAY(GCD(\"1\", 2))").is_err());
+
+        assert!(run_test("DISPLAY(FACTORIAL(-1))").is_err());
+        assert!(run_test("DISPLAY(FACTORIAL(1.5))").is_err());
+        assert!(run_test("DISPLAY(FACTORIAL(TRUE))").is_err());
+        assert!(run_test("DISPLAY(FACTORIAL(\"1\"))").is_err());
+
+        assert!(run_test("DISPLAY(ASIN(1.1))").is_err());
+        assert!(run_test("DISPLAY(ASIN(-1.1))").is_err());
+        assert!(run_test("DISPLAY(ACOS(1.1))").is_err());
+        assert!(run_test("DISPLAY(ACOS(-1.1))").is_err());
+
+        assert!(run_test("DISPLAY(HYPOT(\"3\", 4))").is_err());
+        assert!(run_test("DISPLAY(POW(TRUE, 2))").is_err());
+        assert!(run_test("DISPLAY(ABS(TRUE))").is_err());
+        assert!(run_test("DISPLAY(CEIL(TRUE))").is_err());
+        assert!(run_test("DISPLAY(FLOOR(\"3.14\"))").is_err());
+
+        assert!(run_test("DISPLAY(HYPOT(1))").is_err());
+        assert!(run_test("DISPLAY(POW(2))").is_err());
+        assert!(run_test("DISPLAY(GCD(1))").is_err());
+        assert!(run_test("DISPLAY(GCD(1, 2, 3))").is_err());
     }
 
     #[test]

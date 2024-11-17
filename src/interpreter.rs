@@ -330,6 +330,244 @@ fn evaluate_node(
                         debug,
                     )
                 }
+                "ABS" => {
+                    if args.len() != 1 {
+                        return Err("ABS requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Integer(n) => Ok(Value::Integer(n.abs())),
+                        Value::Float(f) => Ok(Value::Float(f.abs())),
+                        _ => Err("ABS requires a numeric argument".to_string()),
+                    }
+                }
+                "CEIL" => {
+                    if args.len() != 1 {
+                        return Err("CEIL requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Integer(f.ceil() as i32)),
+                        Value::Integer(n) => Ok(Value::Integer(n)),
+                        _ => Err("CEIL requires a numeric argument".to_string()),
+                    }
+                }
+                "FLOOR" => {
+                    if args.len() != 1 {
+                        return Err("FLOOR requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Integer(f.floor() as i32)),
+                        Value::Integer(n) => Ok(Value::Integer(n)),
+                        _ => Err("FLOOR requires a numeric argument".to_string()),
+                    }
+                }
+                "POW" => {
+                    if args.len() != 2 {
+                        return Err("POW requires two arguments".to_string());
+                    }
+                    let base = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let exponent = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (base, exponent) {
+                        (Value::Integer(a), Value::Integer(b)) => {
+                            Ok(Value::Float((a as f32).powi(b)))
+                        }
+                        (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a.powi(b))),
+                        (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
+                        (Value::Integer(a), Value::Float(b)) => {
+                            Ok(Value::Float((a as f32).powf(b)))
+                        }
+                        _ => Err("POW requires numeric arguments".to_string()),
+                    }
+                }
+                "SQRT" => {
+                    if args.len() != 1 {
+                        return Err("SQRT requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Integer(n) => Ok(Value::Float((n as f32).sqrt())),
+                        Value::Float(f) => Ok(Value::Float(f.sqrt())),
+                        _ => Err("SQRT requires a numeric argument".to_string()),
+                    }
+                }
+                "SIN" => {
+                    if args.len() != 1 {
+                        return Err("SIN requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.sin())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).sin())),
+                        _ => Err("SIN requires a numeric argument".to_string()),
+                    }
+                }
+                "COS" => {
+                    if args.len() != 1 {
+                        return Err("COS requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.cos())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).cos())),
+                        _ => Err("COS requires a numeric argument".to_string()),
+                    }
+                }
+                "TAN" => {
+                    if args.len() != 1 {
+                        return Err("TAN requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.tan())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).tan())),
+                        _ => Err("TAN requires a numeric argument".to_string()),
+                    }
+                }
+                "ASIN" => {
+                    if args.len() != 1 {
+                        return Err("ASIN requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.asin())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).asin())),
+                        _ => Err("ASIN requires a numeric argument".to_string()),
+                    }
+                }
+                "ACOS" => {
+                    if args.len() != 1 {
+                        return Err("ACOS requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.acos())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).acos())),
+                        _ => Err("ACOS requires a numeric argument".to_string()),
+                    }
+                }
+                "ATAN" => {
+                    if args.len() != 1 {
+                        return Err("ATAN requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.atan())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).atan())),
+                        _ => Err("ATAN requires a numeric argument".to_string()),
+                    }
+                }
+                "EXP" => {
+                    if args.len() != 1 {
+                        return Err("EXP requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.exp())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).exp())),
+                        _ => Err("EXP requires a numeric argument".to_string()),
+                    }
+                }
+                "LOG" => {
+                    if args.len() != 1 {
+                        return Err("LOG requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.ln())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).ln())),
+                        _ => Err("LOG requires a numeric argument".to_string()),
+                    }
+                }
+                "LOGTEN" => {
+                    if args.len() != 1 {
+                        return Err("LOGTEN requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.log10())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).log10())),
+                        _ => Err("LOGTEN requires a numeric argument".to_string()),
+                    }
+                }
+                "LOGTWO" => {
+                    if args.len() != 1 {
+                        return Err("LOGTWO requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.log2())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).log2())),
+                        _ => Err("LOGTWO requires a numeric argument".to_string()),
+                    }
+                }
+                "GCD" => {
+                    if args.len() != 2 {
+                        return Err("GCD requires two arguments".to_string());
+                    }
+                    let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (a, b) {
+                        (Value::Integer(m), Value::Integer(n)) => Ok(Value::Integer(gcd(m, n))),
+                        _ => Err("GCD requires integer arguments".to_string()),
+                    }
+                }
+                "FACTORIAL" => {
+                    if args.len() != 1 {
+                        return Err("FACTORIAL requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    if let Value::Integer(n) = x {
+                        if n < 0 {
+                            Err("FACTORIAL requires a non-negative integer".to_string())
+                        } else {
+                            Ok(Value::Integer(factorial(n)))
+                        }
+                    } else {
+                        Err("FACTORIAL requires an integer argument".to_string())
+                    }
+                }
+                "DEGREES" => {
+                    if args.len() != 1 {
+                        return Err("DEGREES requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.to_degrees())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).to_degrees())),
+                        _ => Err("DEGREES requires a numeric argument".to_string()),
+                    }
+                }
+                "RADIANS" => {
+                    if args.len() != 1 {
+                        return Err("RADIANS requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Float(f.to_radians())),
+                        Value::Integer(n) => Ok(Value::Float((n as f32).to_radians())),
+                        _ => Err("RADIANS requires a numeric argument".to_string()),
+                    }
+                }
+                "HYPOT" => {
+                    if args.len() != 2 {
+                        return Err("HYPOT requires two arguments".to_string());
+                    }
+                    let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (a, b) {
+                        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.hypot(y))),
+                        (Value::Integer(x), Value::Float(y)) => {
+                            Ok(Value::Float((x as f32).hypot(y)))
+                        }
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.hypot(y as f32))),
+                        (Value::Integer(x), Value::Integer(y)) => {
+                            Ok(Value::Float((x as f32).hypot(y as f32)))
+                        }
+                        _ => Err("HYPOT requires numeric arguments".to_string()),
+                    }
+                }
                 _ => {
                     let procedure = env
                         .borrow()
@@ -859,6 +1097,12 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         (Value::Boolean(a), BinaryOperator::Eq, Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
         (Value::Boolean(a), BinaryOperator::NotEq, Value::Boolean(b)) => Ok(Value::Boolean(a != b)),
 
+        (Value::List(a), BinaryOperator::Add, Value::List(b)) => {
+            let mut result = a.clone();
+            result.extend(b.iter().cloned());
+            Ok(Value::List(result))
+        }
+
         _ => Err(format!(
             "Invalid operation: {:?} {:?} {:?}",
             left, op, right
@@ -869,6 +1113,7 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
 fn evaluate_unary_op(op: &UnaryOperator, val: &Value) -> Result<Value, String> {
     match (op, val) {
         (UnaryOperator::Neg, Value::Integer(n)) => Ok(Value::Integer(-n)),
+        (UnaryOperator::Neg, Value::Float(f)) => Ok(Value::Float(-f)),
         (UnaryOperator::Not, Value::Boolean(b)) => Ok(Value::Boolean(!b)),
         _ => Err(format!("Invalid unary operation: {:?} {:?}", op, val)),
     }
@@ -886,4 +1131,17 @@ fn value_to_string(value: &Value) -> String {
         }
         Value::Unit => "".to_string(),
     }
+}
+
+fn gcd(mut m: i32, mut n: i32) -> i32 {
+    while n != 0 {
+        let temp = n;
+        n = m % n;
+        m = temp;
+    }
+    m.abs()
+}
+
+fn factorial(n: i32) -> i32 {
+    (1..=n).product()
 }
