@@ -46,19 +46,20 @@ jobs:
         run: cargo build --release --target x86_64-pc-windows-gnu
 
       - name: Prepare Artifacts
+        shell: pwsh
         run: |
-          mkdir -p release
-          copy target\x86_64-pc-windows-gnu\release\fplc.exe release\fplc-x64.exe
+          New-Item -Path release -ItemType Directory -Force
+          Copy-Item "target\x86_64-pc-windows-gnu\release\fplc.exe" -Destination "release\fplc-x64.exe" -Force
 
       - name: Install NSIS
         run: choco install nsis -y
           
       - name: Prepare Installer Files
+        shell: pwsh
         run: |
-          mkdir -p installer
-          copy target\x86_64-pc-windows-gnu\release\fplc.exe installer\fplc.exe
-          copy LICENSE installer\
-          copy installer\Pseudolang-Logo.ico installer\
+          Copy-Item "target\x86_64-pc-windows-gnu\release\fplc.exe" -Destination "installer\fplc.exe" -Force
+          Copy-Item "LICENSE" -Destination "installer\" -Force
+          Copy-Item "installer\Pseudolang-Logo.ico" -Destination "installer\" -Force
           
       - name: Build Installer
         run: makensis installer\pseudolang.nsi
