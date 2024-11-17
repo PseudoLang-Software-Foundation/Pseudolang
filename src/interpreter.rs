@@ -224,8 +224,11 @@ fn evaluate_node(
             Ok(Value::Unit)
         }
 
-        AstNode::Input => {
-            print!("> ");
+        AstNode::Input(prompt) => {
+            if let Some(prompt_expr) = prompt {
+                let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
+                print!("{}", value_to_string(&prompt_val));
+            }
             io::stdout().flush().map_err(|e| e.to_string())?;
             let mut input = String::new();
             io::stdin()

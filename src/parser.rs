@@ -32,7 +32,7 @@ pub enum AstNode {
 
     Display(Option<Box<AstNode>>),
     DisplayInline(Box<AstNode>),
-    Input,
+    Input(Option<Box<AstNode>>),
     Random(Box<AstNode>, Box<AstNode>),
     Insert(Box<AstNode>, Box<AstNode>, Box<AstNode>),
     Append(Box<AstNode>, Box<AstNode>),
@@ -287,10 +287,15 @@ impl Parser {
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after INPUT".to_string());
                 }
+                let prompt = if let Some(Token::String(_)) = self.peek() {
+                    Some(Box::new(self.parse_expression(debug)?))
+                } else {
+                    None
+                };
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after INPUT(".to_string());
+                    return Err("Expected ')' after INPUT expression".to_string());
                 }
-                Ok(AstNode::Input)
+                Ok(AstNode::Input(prompt))
             }
             _ => {
                 Self::debug_print(
@@ -329,7 +334,8 @@ impl Parser {
             | Some(Token::ListRemove)
             | Some(Token::ListAppend)
             | Some(Token::ListInsert)
-            | Some(Token::Sort) => false,
+            | Some(Token::Sort)
+            | Some(Token::Input) => true,
             _ => false,
         }
     }
@@ -601,6 +607,21 @@ impl Parser {
                 let vars = vars.clone();
                 self.advance();
                 Ok(AstNode::FormattedString(template, vars))
+            }
+            Some(Token::Input) => {
+                self.advance();
+                if !self.match_token(&Token::OpenParen) {
+                    return Err("Expected '(' after INPUT".to_string());
+                }
+                let prompt = if let Some(Token::String(_)) = self.peek() {
+                    Some(Box::new(self.parse_expression(debug)?))
+                } else {
+                    None
+                };
+                if !self.match_token(&Token::CloseParen) {
+                    return Err("Expected ')' after INPUT".to_string());
+                }
+                Ok(AstNode::Input(prompt))
             }
             _ => match self.advance() {
                 Some(Token::Integer(n)) => Ok(AstNode::Integer(n)),

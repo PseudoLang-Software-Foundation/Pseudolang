@@ -954,4 +954,14 @@ DISPLAY(str[0])"#,
             "[1, 2, 2, 3, 3, 4, 7]",
         );
     }
+
+    #[test]
+    fn test_misc() {
+        assert_output(
+            r#"
+                    DISPLAYINLINE("Hello, ")
+                    DISPLAYINLINE("World!")"#,
+            "Hello, World!",
+        );
+    }
 }

@@ -348,6 +348,7 @@ impl<'a> Lexer<'a> {
                             Some(Token::Display(None))
                         }
                     }
+                    "DISPLAYINLINE" => Some(Token::DisplayInline),
                     "INPUT" => Some(Token::Input),
                     "IF" => Some(Token::If),
                     "ELSE" => Some(Token::Else),
