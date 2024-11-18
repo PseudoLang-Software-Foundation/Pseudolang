@@ -126,6 +126,14 @@ Converts angle x from radians to degrees.
 
 Converts angle x from degrees to radians.
 
+`MIN(a, b)`
+
+Returns the smaller value of a and b.
+
+`MAX(a, b)`
+
+Returns the larger value of a and b.
+
 `HYPOT(x, y)`
 
 Returns the Euclidean norm, sqrt(x*x + y*y).
@@ -282,10 +290,10 @@ Defines procName as a procedure that takes zero or more arguments. The procedure
 Returns the flow of control to the point where the procedure was
 called and returns the value of a. Can be used as a value itself.
 
-`Substring("abcd", start, end)`
+`SUBSTRING("abcd", start, end)`
 Returns a string of characters from index `start` to index `end` of the given string
 
-`Concat("ab", "cd")`
+`CONCAT("ab", "cd")`
 Returns a single string with the two given strings combined
 
 ## Data Types

@@ -56,7 +56,7 @@ The **examples** folder contains multiple example files for Pseudolang. It is al
 - [ ] Compiler optimizations
 - [ ] Debian package
 - [ ] Library support (remote procedures, calls, networking, etc)
-- [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices))
+- [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices), dictionaries)
 - [ ] Man page and and better help menu on simple command run
 - [ ] VSCode syntax highlighter extension and runner
 - [ ] GitHub issue template

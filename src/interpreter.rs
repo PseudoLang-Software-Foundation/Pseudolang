@@ -596,6 +596,34 @@ fn evaluate_node(
                         _ => Err("HYPOT requires numeric arguments".to_string()),
                     }
                 }
+                "MIN" => {
+                    if args.len() != 2 {
+                        return Err("MIN requires two arguments".to_string());
+                    }
+                    let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (a, b) {
+                        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x.min(y))),
+                        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.min(y))),
+                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f32).min(y))),
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.min(y as f32))),
+                        _ => Err("MIN requires two numeric arguments".to_string()),
+                    }
+                }
+                "MAX" => {
+                    if args.len() != 2 {
+                        return Err("MAX requires two arguments".to_string());
+                    }
+                    let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (a, b) {
+                        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x.max(y))),
+                        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.max(y))),
+                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f32).max(y))),
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.max(y as f32))),
+                        _ => Err("MAX requires two numeric arguments".to_string()),
+                    }
+                }
                 _ => {
                     let procedure = env
                         .borrow()

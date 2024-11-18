@@ -1389,4 +1389,193 @@ DISPLAY(arr)"#,
             "6\n6\n1",
         );
     }
+
+    #[test]
+    fn test_heap_sort() {
+        assert_output(
+            r#"
+        PROCEDURE heapify(arr, n, i) {
+            largest <- i
+            left <- 2 * i
+            right <- 2 * i + 1
+
+            IF(left <= n AND arr[left] > arr[largest]) {
+                largest <- left
+            }
+
+            IF(right <= n AND arr[right] > arr[largest]) {
+                largest <- right
+            }
+
+            IF(largest NOT= i) {
+                temp <- arr[i]
+                arr[i] <- arr[largest]
+                arr[largest] <- temp
+
+                arr <- heapify(arr, n, largest)
+            }
+            RETURN(arr)
+        }
+
+        PROCEDURE heapSort(arr) {
+            n <- LENGTH(arr)
+            i <- n / 2
+            REPEAT UNTIL(i < 1) {
+                arr <- heapify(arr, n, i)
+                i <- i - 1
+            }
+
+            i <- n
+            REPEAT UNTIL(i < 1) {
+                temp <- arr[1]
+                arr[1] <- arr[i]
+                arr[i] <- temp
+
+                arr <- heapify(arr, i - 1, 1)
+                i <- i - 1
+            }
+            RETURN(arr)
+        }
+
+        arr <- [12, 11, 13, 5, 6, 7]
+        arr <- heapSort(arr)
+        DISPLAY(arr)
+        "#,
+            "[5, 6, 7, 11, 12, 13]",
+        );
+    }
+
+    #[test]
+    fn test_counting_sort() {
+        assert_output(
+            r#"
+        PROCEDURE countingSort(arr, max_val) {
+            count <- []
+            i <- 1
+            REPEAT (max_val + 1) TIMES {
+                APPEND(count, 0)
+                i <- i + 1
+            }
+
+            i <- 1
+            REPEAT LENGTH(arr) TIMES {
+                count[arr[i]] <- count[arr[i]] + 1
+                i <- i + 1
+            }
+
+            i <- 2
+            REPEAT max_val TIMES {
+                count[i] <- count[i] + count[i - 1]
+                i <- i + 1
+            }
+
+            output <- []
+            i <- 1
+            REPEAT LENGTH(arr) TIMES {
+                APPEND(output, 0)
+                i <- i + 1
+            }
+
+            i <- LENGTH(arr)
+            REPEAT LENGTH(arr) TIMES {
+                index <- count[arr[i]]
+                output[index] <- arr[i]
+                count[arr[i]] <- count[arr[i]] - 1
+                i <- i - 1
+            }
+            RETURN(output)
+        }
+
+        arr <- [4, 2, 2, 8, 3, 3, 1]
+        sorted <- countingSort(arr, 8)
+        DISPLAY(sorted)
+        "#,
+            "[1, 2, 2, 3, 3, 4, 8]",
+        );
+    }
+
+    #[test]
+    fn test_kmp_string_matching() {
+        assert_output(
+            r#"
+        PROCEDURE computeLPS(pattern) {
+            lps <- []
+            length <- 0
+            i <- 1
+            APPEND(lps, 0)
+
+            REPEAT UNTIL(i >= LENGTH(pattern)) {
+                IF(pattern[i + 1] = pattern[length + 1]) {
+                    length <- length + 1
+                    APPEND(lps, length)
+                    i <- i + 1
+                } ELSE {
+                    IF(length NOT= 0) {
+                        length <- lps[length]
+                    } ELSE {
+                        APPEND(lps, 0)
+                        i <- i + 1
+                    }
+                }
+            }
+            RETURN(lps)
+        }
+
+        PROCEDURE kmpSearch(text, pattern) {
+            lps <- computeLPS(pattern)
+            i <- 1
+            j <- 1
+            positions <- []
+            n <- LENGTH(text)
+            m <- LENGTH(pattern)
+
+            REPEAT UNTIL(i > n) {
+                IF(pattern[j] = text[i]) {
+                    i <- i + 1
+                    j <- j + 1
+                }
+
+                IF(j > m) {
+                    APPEND(positions, i - m)
+                    j <- lps[j - 1] + 1
+                } ELSE IF(i <= n AND pattern[j] NOT= text[i]) {
+                    IF(j NOT= 1) {
+                        j <- lps[j - 1] + 1
+                    } ELSE {
+                        i <- i + 1
+                    }
+                }
+            }
+            RETURN(positions)
+        }
+
+        text <- "ABABDABACDABABCABAB"
+        pattern <- "ABABCABAB"
+        positions <- kmpSearch(text, pattern)
+        DISPLAY(positions)
+        "#,
+            "[11]",
+        );
+    }
+
+    #[test]
+    fn test_min_max_functions() {
+        assert_output(
+            r#"
+            PROCEDURE test_min_max() {
+                a <- MIN(5, 10)
+                b <- MIN(10, 5)
+                c <- MAX(5, 10)
+                d <- MAX(10, 5)
+                DISPLAY(a)
+                DISPLAY(b)
+                DISPLAY(c)
+                DISPLAY(d)
+            }
+            
+            test_min_max()
+            "#,
+            "5\n5\n10\n10",
+        );
+    }
 }
