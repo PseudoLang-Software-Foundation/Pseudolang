@@ -38,7 +38,7 @@ In order to compile the project yourself, you will need to have rust installed.
 
 - Install [**rust**](https://www.rust-lang.org/tools/install), and make sure you have it added to PATH.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
-- - To build **release**, you will need bash (or you can translate the shell commands to your liking). Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
+- - To build **release**, you will need bash, cross (cargo install cross), and docker. Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
 - - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
 
 - In order to run the unit tests, simply run `cargo test`.
