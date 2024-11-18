@@ -60,7 +60,7 @@ mod test {
     fn test_comments() {
         assert_output(
             r#"
-            COMMENT This is a comment
+            COMMENT DISPLAY(43)
             DISPLAY(42)
             "#,
             "42",
@@ -70,9 +70,34 @@ mod test {
             r#"
             COMMENTBLOCK
             This is a comment
-            43
+            DISPLAY(43)
             COMMENTBLOCK
             DISPLAY(42)
+            "#,
+            "42",
+        );
+
+        assert_output(
+            r#"
+            COMMENT DISPLAY(43)
+            COMMENTBLOCK
+            DISPLAY(43)
+            COMMENTBLOCK
+            DISPLAY(42)
+            COMMENT DISPLAY(43)
+            "#,
+            "42",
+        );
+
+        assert_output(
+            r#"
+            COMMENTBLOCK
+            DISPLAY(43)
+            DISPLAY(44)
+            COMMENTBLOCK
+            COMMENT DISPLAY(43)
+            DISPLAY(42)
+            COMMENT DISPLAY(43)
             "#,
             "42",
         );

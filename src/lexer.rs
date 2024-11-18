@@ -104,12 +104,15 @@ impl<'a> Lexer<'a> {
             match token {
                 Token::Comment => {
                     while let Some(c) = self.chars.next() {
+                        self.pos += 1;
                         if c == '\n' {
                             break;
                         }
                     }
+                    continue;
                 }
                 Token::CommentBlock => {
+                    let mut found_end = false;
                     while let Some(_) = self.chars.next() {
                         self.pos += 1;
 
@@ -118,9 +121,14 @@ impl<'a> Lexer<'a> {
                                 self.chars.next();
                                 self.pos += 1;
                             }
+                            found_end = true;
                             break;
                         }
                     }
+                    if !found_end {
+                        return tokens;
+                    }
+                    continue;
                 }
                 _ => tokens.push(token),
             }
