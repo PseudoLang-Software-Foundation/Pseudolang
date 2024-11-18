@@ -48,7 +48,7 @@ In order to compile the project yourself, you will need to have rust installed.
 
 [Pseudolang.md](Pseudolang.md) contains a full explanation of Pseudolang and features specific to PseudoLang.
 
-The **examples** folder contains multiple example files for Pseudolang. It is also wowrth checking `mod.rs`, as it contains various unit tests for Pseudolang.
+The **examples** folder contains multiple example files for Pseudolang. It is also worth checking `mod.rs`, as it contains various unit tests for Pseudolang.
 
 ## Todo
 
