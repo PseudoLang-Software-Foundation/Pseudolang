@@ -8,8 +8,8 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 enum Value {
-    Integer(i32),
-    Float(f32),
+    Integer(i64),
+    Float(f64),
     String(String),
     Boolean(bool),
     List(Vec<Value>),
@@ -319,8 +319,8 @@ fn evaluate_node(
                     }
                     let arg = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match arg {
-                        Value::List(elements) => Ok(Value::Integer(elements.len() as i32)),
-                        Value::String(s) => Ok(Value::Integer(s.len() as i32)),
+                        Value::List(elements) => Ok(Value::Integer(elements.len() as i64)),
+                        Value::String(s) => Ok(Value::Integer(s.len() as i64)),
                         _ => Err("LENGTH requires a list or string argument".to_string()),
                     }
                 }
@@ -375,7 +375,7 @@ fn evaluate_node(
                     }
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
-                        Value::Float(f) => Ok(Value::Integer(f.ceil() as i32)),
+                        Value::Float(f) => Ok(Value::Integer(f.ceil() as i64)),
                         Value::Integer(n) => Ok(Value::Integer(n)),
                         _ => Err("CEIL requires a numeric argument".to_string()),
                     }
@@ -386,7 +386,7 @@ fn evaluate_node(
                     }
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
-                        Value::Float(f) => Ok(Value::Integer(f.floor() as i32)),
+                        Value::Float(f) => Ok(Value::Integer(f.floor() as i64)),
                         Value::Integer(n) => Ok(Value::Integer(n)),
                         _ => Err("FLOOR requires a numeric argument".to_string()),
                     }
@@ -399,12 +399,12 @@ fn evaluate_node(
                     let exponent = evaluate_node(&args[1], Rc::clone(&env), debug)?;
                     match (base, exponent) {
                         (Value::Integer(a), Value::Integer(b)) => {
-                            Ok(Value::Float((a as f32).powi(b)))
+                            Ok(Value::Float((a as f64).powi(b as i32)))
                         }
-                        (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a.powi(b))),
+                        (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a.powi(b as i32))),
                         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
                         (Value::Integer(a), Value::Float(b)) => {
-                            Ok(Value::Float((a as f32).powf(b)))
+                            Ok(Value::Float((a as f64).powf(b)))
                         }
                         _ => Err("POW requires numeric arguments".to_string()),
                     }
@@ -415,7 +415,7 @@ fn evaluate_node(
                     }
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
-                        Value::Integer(n) => Ok(Value::Float((n as f32).sqrt())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).sqrt())),
                         Value::Float(f) => Ok(Value::Float(f.sqrt())),
                         _ => Err("SQRT requires a numeric argument".to_string()),
                     }
@@ -427,7 +427,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.sin())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).sin())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).sin())),
                         _ => Err("SIN requires a numeric argument".to_string()),
                     }
                 }
@@ -438,7 +438,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.cos())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).cos())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).cos())),
                         _ => Err("COS requires a numeric argument".to_string()),
                     }
                 }
@@ -449,7 +449,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.tan())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).tan())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).tan())),
                         _ => Err("TAN requires a numeric argument".to_string()),
                     }
                 }
@@ -460,7 +460,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.asin())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).asin())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).asin())),
                         _ => Err("ASIN requires a numeric argument".to_string()),
                     }
                 }
@@ -471,7 +471,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.acos())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).acos())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).acos())),
                         _ => Err("ACOS requires a numeric argument".to_string()),
                     }
                 }
@@ -482,7 +482,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.atan())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).atan())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).atan())),
                         _ => Err("ATAN requires a numeric argument".to_string()),
                     }
                 }
@@ -493,7 +493,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.exp())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).exp())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).exp())),
                         _ => Err("EXP requires a numeric argument".to_string()),
                     }
                 }
@@ -504,7 +504,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.ln())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).ln())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).ln())),
                         _ => Err("LOG requires a numeric argument".to_string()),
                     }
                 }
@@ -515,7 +515,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.log10())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).log10())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).log10())),
                         _ => Err("LOGTEN requires a numeric argument".to_string()),
                     }
                 }
@@ -526,7 +526,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.log2())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).log2())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).log2())),
                         _ => Err("LOGTWO requires a numeric argument".to_string()),
                     }
                 }
@@ -563,7 +563,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.to_degrees())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).to_degrees())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).to_degrees())),
                         _ => Err("DEGREES requires a numeric argument".to_string()),
                     }
                 }
@@ -574,7 +574,7 @@ fn evaluate_node(
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match x {
                         Value::Float(f) => Ok(Value::Float(f.to_radians())),
-                        Value::Integer(n) => Ok(Value::Float((n as f32).to_radians())),
+                        Value::Integer(n) => Ok(Value::Float((n as f64).to_radians())),
                         _ => Err("RADIANS requires a numeric argument".to_string()),
                     }
                 }
@@ -587,11 +587,11 @@ fn evaluate_node(
                     match (a, b) {
                         (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.hypot(y))),
                         (Value::Integer(x), Value::Float(y)) => {
-                            Ok(Value::Float((x as f32).hypot(y)))
+                            Ok(Value::Float((x as f64).hypot(y)))
                         }
-                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.hypot(y as f32))),
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.hypot(y as f64))),
                         (Value::Integer(x), Value::Integer(y)) => {
-                            Ok(Value::Float((x as f32).hypot(y as f32)))
+                            Ok(Value::Float((x as f64).hypot(y as f64)))
                         }
                         _ => Err("HYPOT requires numeric arguments".to_string()),
                     }
@@ -605,8 +605,8 @@ fn evaluate_node(
                     match (a, b) {
                         (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x.min(y))),
                         (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.min(y))),
-                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f32).min(y))),
-                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.min(y as f32))),
+                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f64).min(y))),
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.min(y as f64))),
                         _ => Err("MIN requires two numeric arguments".to_string()),
                     }
                 }
@@ -619,8 +619,8 @@ fn evaluate_node(
                     match (a, b) {
                         (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x.max(y))),
                         (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.max(y))),
-                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f32).max(y))),
-                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.max(y as f32))),
+                        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float((x as f64).max(y))),
+                        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.max(y as f64))),
                         _ => Err("MAX requires two numeric arguments".to_string()),
                     }
                 }
@@ -777,9 +777,9 @@ fn evaluate_node(
         AstNode::ToNum(expr) => {
             let val = evaluate_node(expr, Rc::clone(&env), debug)?;
             if let Value::String(s) = val {
-                if let Ok(n) = s.parse::<i32>() {
+                if let Ok(n) = s.parse::<i64>() {
                     Ok(Value::Integer(n))
-                } else if let Ok(f) = s.parse::<f32>() {
+                } else if let Ok(f) = s.parse::<f64>() {
                     Ok(Value::Float(f))
                 } else {
                     Err("Cannot convert string to number".to_string())
@@ -860,8 +860,8 @@ fn evaluate_node(
         AstNode::Length(list) => {
             let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
             match list_val {
-                Value::List(elements) => Ok(Value::Integer(elements.len() as i32)),
-                Value::String(s) => Ok(Value::Integer(s.len() as i32)),
+                Value::List(elements) => Ok(Value::Integer(elements.len() as i64)),
+                Value::String(s) => Ok(Value::Integer(s.len() as i64)),
                 _ => Err("LENGTH requires a list or string argument".to_string()),
             }
         }
@@ -997,11 +997,11 @@ fn evaluate_node(
                     (Value::Float(a_float), Value::Float(b_float)) => a_float
                         .partial_cmp(b_float)
                         .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::Integer(a_int), Value::Float(b_float)) => (*a_int as f32)
+                    (Value::Integer(a_int), Value::Float(b_float)) => (*a_int as f64)
                         .partial_cmp(b_float)
                         .unwrap_or(std::cmp::Ordering::Equal),
                     (Value::Float(a_float), Value::Integer(b_int)) => a_float
-                        .partial_cmp(&(*b_int as f32))
+                        .partial_cmp(&(*b_int as f64))
                         .unwrap_or(std::cmp::Ordering::Equal),
                     (Value::String(a_str), Value::String(b_str)) => a_str.cmp(b_str),
                     _ => std::cmp::Ordering::Equal,
@@ -1125,35 +1125,35 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         }
 
         (Value::Integer(a), BinaryOperator::Add, Value::Float(b)) => {
-            Ok(Value::Float(*a as f32 + b))
+            Ok(Value::Float(*a as f64 + b))
         }
         (Value::Float(a), BinaryOperator::Add, Value::Integer(b)) => {
-            Ok(Value::Float(a + *b as f32))
+            Ok(Value::Float(a + *b as f64))
         }
         (Value::Integer(a), BinaryOperator::Sub, Value::Float(b)) => {
-            Ok(Value::Float(*a as f32 - b))
+            Ok(Value::Float(*a as f64 - b))
         }
         (Value::Float(a), BinaryOperator::Sub, Value::Integer(b)) => {
-            Ok(Value::Float(a - *b as f32))
+            Ok(Value::Float(a - *b as f64))
         }
         (Value::Integer(a), BinaryOperator::Mul, Value::Float(b)) => {
-            Ok(Value::Float(*a as f32 * b))
+            Ok(Value::Float(*a as f64 * b))
         }
         (Value::Float(a), BinaryOperator::Mul, Value::Integer(b)) => {
-            Ok(Value::Float(a * *b as f32))
+            Ok(Value::Float(a * *b as f64))
         }
         (Value::Integer(a), BinaryOperator::Div, Value::Float(b)) => {
             if *b == 0.0 {
                 Err("Division by zero".to_string())
             } else {
-                Ok(Value::Float(*a as f32 / b))
+                Ok(Value::Float(*a as f64 / b))
             }
         }
         (Value::Float(a), BinaryOperator::Div, Value::Integer(b)) => {
             if *b == 0 {
                 Err("Division by zero".to_string())
             } else {
-                Ok(Value::Float(a / *b as f32))
+                Ok(Value::Float(a / *b as f64))
             }
         }
 
@@ -1196,7 +1196,7 @@ fn value_to_string(value: &Value) -> String {
     }
 }
 
-fn gcd(mut m: i32, mut n: i32) -> i32 {
+fn gcd(mut m: i64, mut n: i64) -> i64 {
     while n != 0 {
         let temp = n;
         n = m % n;
@@ -1205,6 +1205,6 @@ fn gcd(mut m: i32, mut n: i32) -> i32 {
     m.abs()
 }
 
-fn factorial(n: i32) -> i32 {
+fn factorial(n: i64) -> i64 {
     (1..=n).product()
 }

@@ -9,8 +9,8 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.41-green" alt="Version">
-    <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main">Nightly Link</a>
+    <img src="https://img.shields.io/badge/Version-0.9.42-green" alt="Version">
+    <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
 
@@ -52,14 +52,24 @@ The **examples** folder contains multiple example files for Pseudolang. It is al
 
 ## Todo
 
-- [ ] Web version
-- [ ] Compiler optimizations
 - [ ] Debian package
-- [ ] Library support (remote procedures, calls, networking, etc)
-- [ ] Casting and more types (ex: doubles, n-dimensional arrays (matrices), dictionaries)
-- [ ] Man page and and better help menu on simple command run
-- [ ] VSCode syntax highlighter extension and runner
 - [ ] GitHub issue template
+
+<details>
+<summary>Functionality</summary>
+
+- [ ] Doubles (floats, longs, endians, etc)
+- [ ] N-Dimensional arrays (matrices)
+- [ ] Dictionaries
+- [ ] Multithreading
+- [ ] Anonymous functions
+- [ ] Generics
+- [ ] Library support (remote procedures)
+- [ ] Networking
+- [ ] File IO
+- [ ] Meta programming
+
+</details>
 
 ## Issues
 

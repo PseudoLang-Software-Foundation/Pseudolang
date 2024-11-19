@@ -3,8 +3,8 @@ use crate::lexer::Token;
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum AstNode {
-    Integer(i32),
-    Float(f32),
+    Integer(i64),
+    Float(f64),
     String(String),
     Boolean(bool),
     List(Vec<AstNode>),

@@ -45,8 +45,8 @@ pub enum Token {
     Procedure,
     Return,
 
-    Integer(i32),
-    Float(f32),
+    Integer(i64),
+    Float(f64),
     String(String),
     RawString(String),
     MultilineString(String),

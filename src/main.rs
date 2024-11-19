@@ -9,43 +9,85 @@ use lexer::Lexer;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
+const HELP_MESSAGE: &str = r#"PseudoLang Compiler Usage:
+    fplc [OPTIONS] <input_file.psl> <output_file>
+
+OPTIONS:
+    -h, --help       Display this help message
+    -v, --version    Display version information
+    --debug         Enable debug output during compilation
+
+ARGUMENTS:
+    <input_file.psl>  Source file to compile (must have .psl extension)
+    <output_file>     Output file name (will add .exe on Windows)
+
+EXAMPLES:
+    fplc source.psl output
+    fplc --debug program.psl program.exe
+    fplc -v
+    fplc -h"#;
+
+#[derive(Debug)]
 struct Config {
     input_file: String,
     output_file: String,
     debug: bool,
     show_version: bool,
+    show_help: bool,
 }
 
 fn parse_args() -> Result<Config, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    match args.len() {
-        0 => Err(format!(
-            "Usage: {} [--debug] [--version] <input_file.psl> <output_file>",
-            env!("CARGO_PKG_NAME")
-        )),
-        1 if args[0] == "--version" || args[0] == "-v" => Ok(Config {
+    if args.is_empty() {
+        return Err(format!(
+            "{}\n\nTip: Use -h or --help for detailed usage information.",
+            HELP_MESSAGE
+        ));
+    }
+
+    let debug = args.iter().any(|arg| arg == "--debug");
+    let args: Vec<String> = args.into_iter().filter(|arg| arg != "--debug").collect();
+
+    match args.get(0).map(String::as_str) {
+        Some("-h") | Some("--help") => Ok(Config {
+            input_file: String::new(),
+            output_file: String::new(),
+            debug: false,
+            show_version: false,
+            show_help: true,
+        }),
+        Some("-v") | Some("--version") => Ok(Config {
             input_file: String::new(),
             output_file: String::new(),
             debug: false,
             show_version: true,
+            show_help: false,
         }),
-        2 => Ok(Config {
-            input_file: args[0].clone(),
-            output_file: args[1].clone(),
-            debug: false,
-            show_version: false,
-        }),
-        3 if args[0] == "--debug" => Ok(Config {
-            input_file: args[1].clone(),
-            output_file: args[2].clone(),
-            debug: true,
-            show_version: false,
-        }),
-        _ => Err(format!(
-            "Usage: {} [--debug] [--version] <input_file.psl> <output_file>",
-            env!("CARGO_PKG_NAME")
-        )),
+        Some(input_file) => {
+            if args.len() < 2 {
+                return Err("Missing required argument: output_file\n\nTip: Use -h or --help for detailed usage information.".to_string());
+            }
+
+            if !input_file.ends_with(".psl") {
+                return Err(format!(
+                    "Input file must have .psl extension, got: {}\n\nTip: Use -h or --help for detailed usage information.",
+                    input_file
+                ));
+            }
+
+            Ok(Config {
+                input_file: input_file.to_string(),
+                output_file: args[1].clone(),
+                debug,
+                show_version: false,
+                show_help: false,
+            })
+        }
+        None => Err(
+            "No arguments provided\n\nTip: Use -h or --help for detailed usage information."
+                .to_string(),
+        ),
     }
 }
 
@@ -53,24 +95,35 @@ fn main() {
     let config = match parse_args() {
         Ok(config) => config,
         Err(error) => {
-            eprintln!("{}", error);
+            eprintln!("Error: {}", error);
             std::process::exit(1);
         }
     };
 
+    if config.show_help {
+        println!("{}", HELP_MESSAGE);
+        return;
+    }
+
     if config.show_version {
-        println!("Pseudolang version {}", VERSION);
+        println!("PseudoLang Compiler version {}", VERSION);
         return;
     }
 
     if config.debug {
         println!("\n=== Debug Mode Enabled ===\n");
+    } else {
+        println!("PseudoLang Compiler version {}", VERSION);
+        println!("Processing {} -> {}", config.input_file, config.output_file);
     }
 
     let mut file = match fs::File::open(&config.input_file) {
         Ok(file) => file,
         Err(error) => {
-            eprintln!("Error opening file {}: {}", config.input_file, error);
+            eprintln!(
+                "Error opening file {}: {}\nPlease ensure the file exists and you have read permissions.",
+                config.input_file, error
+            );
             std::process::exit(1);
         }
     };
@@ -89,7 +142,7 @@ fn main() {
     }
 
     if !config.debug {
-        println!("Successfully lexed program");
+        println!("✓ Successfully lexed program");
     }
 
     if config.debug {
@@ -106,7 +159,7 @@ fn main() {
             }
 
             if !config.debug {
-                println!("Successfully parsed program");
+                println!("✓ Successfully parsed program");
             }
 
             match interpreter::run(ast) {
@@ -128,7 +181,7 @@ fn main() {
 
                     #[cfg(target_os = "windows")]
                     let content = format!(
-                        "
+                        "@echo off\r\n\
                         {}",
                         result
                             .lines()
@@ -165,10 +218,8 @@ fn main() {
                     }
 
                     if !config.debug {
-                        println!(
-                            "Successfully executed program and wrote output to {}",
-                            output_file
-                        );
+                        println!("✓ Successfully executed program");
+                        println!("✓ Output written to: {}", output_file);
                     }
                 }
                 Err(err) => {
