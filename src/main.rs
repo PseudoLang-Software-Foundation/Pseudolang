@@ -181,7 +181,7 @@ fn main() {
 
                     #[cfg(target_os = "windows")]
                     let content = format!(
-                        "@echo off\r\n\
+                        "
                         {}",
                         result
                             .lines()

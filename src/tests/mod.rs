@@ -1549,4 +1549,51 @@ DISPLAY(arr)"#,
             "5\n5\n10\n10",
         );
     }
+
+    #[test]
+    fn test_string_comparisons() {
+        assert_output(
+            r#"
+            a <- "hello"
+            b <- "hello"
+            IF(a = b) {
+                DISPLAY("equal")
+            } ELSE {
+                DISPLAY("not equal")
+            }
+            "#,
+            "equal",
+        );
+
+        assert_output(
+            r#"
+            PROCEDURE compareStrings(s1, s2) {
+                RETURN(s1 = s2)
+            }
+            DISPLAY(compareStrings("hello", "hello"))
+            DISPLAY(compareStrings("hello", "world"))
+            "#,
+            "true\nfalse",
+        );
+
+        assert_output(
+            r#"
+            a <- "asd"
+            b <- "asd"
+            c <- (a = b)
+            DISPLAY(c)
+            "#,
+            "true",
+        );
+
+        assert_output(
+            r#"
+            a <- "asd"
+            b <- "asd"
+            DISPLAY(a = b)
+            DISPLAY((a = b))
+            "#,
+            "true\ntrue",
+        );
+    }
 }
