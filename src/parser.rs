@@ -899,19 +899,30 @@ impl Parser {
 
     fn parse_list(&mut self, debug: bool) -> Result<AstNode, String> {
         let mut elements = Vec::new();
-        while let Some(token) = self.peek() {
-            if token == &Token::CloseBracket {
+        loop {
+            while let Some(Token::Newline) = self.peek() {
+                self.advance();
+            }
+
+            if let Some(Token::CloseBracket) = self.peek() {
+                self.advance();
                 break;
             }
+
             if !elements.is_empty() {
                 if !self.match_token(&Token::Comma) {
                     return Err("Expected comma between list elements".to_string());
                 }
+                while let Some(Token::Newline) = self.peek() {
+                    self.advance();
+                }
             }
+
             elements.push(self.parse_expression(debug)?);
-        }
-        if !self.match_token(&Token::CloseBracket) {
-            return Err("Expected ']'".to_string());
+
+            while let Some(Token::Newline) = self.peek() {
+                self.advance();
+            }
         }
         Ok(AstNode::List(elements))
     }

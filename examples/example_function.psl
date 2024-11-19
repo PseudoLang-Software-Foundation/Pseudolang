@@ -1,9 +1,0 @@
-PROCEDURE displayXTimes(text, times)
-{
-    REPEAT times TIMES
-    {
-        DISPLAY(text)
-    } 
-}
-
-displayXTimes("Hello, World!", 2)
