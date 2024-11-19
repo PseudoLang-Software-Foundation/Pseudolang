@@ -276,6 +276,13 @@ FOR EACH item IN aList
 The variable item is assigned the value of each element of aList sequentially, in order, from the first element to the last element. The statements are executed once for each assignment of item.
 
 ```psl
+matrix <- [[1, 2, 3], [4, 5, 6]]
+DISPLAY(matrix[1][1]) COMMENT Should be 1
+```
+
+Multi-dimensional arrays (also called matrices or N-D arrays) can be created and manipulated using nested lists.All list operations (LENGTH, APPEND, REMOVE, etc.) can be applied to any dimension of the array.
+
+```psl
 PROCEDURE procName(a, b)
 {
  <statement(s)>

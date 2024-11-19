@@ -172,39 +172,43 @@ impl Parser {
                     _ => return Err("Expected identifier".to_string()),
                 };
 
+                let mut list_accesses = Vec::new();
+                while let Some(Token::OpenBracket) = self.peek() {
+                    self.advance();
+                    let index = self.parse_expression(debug)?;
+                    if !self.match_token(&Token::CloseBracket) {
+                        return Err("Expected ']'".to_string());
+                    }
+                    list_accesses.push(index);
+                }
+
                 match self.peek() {
                     Some(Token::Assign) => {
                         self.advance();
-                        let value = match self.peek() {
-                            Some(Token::ToString) | Some(Token::ToNum) => {
-                                self.parse_expression(debug)?
-                            }
-                            _ => self.parse_expression(debug)?,
-                        };
-                        Ok(AstNode::Assignment(
-                            Box::new(AstNode::Identifier(identifier)),
-                            Box::new(value),
-                        ))
-                    }
-                    Some(Token::OpenBracket) => {
-                        self.advance();
-                        let index = self.parse_expression(debug)?;
-                        if !self.match_token(&Token::CloseBracket) {
-                            return Err("Expected ']'".to_string());
-                        }
+                        let value = self.parse_expression(debug)?;
 
-                        if self.match_token(&Token::Assign) {
-                            let value = self.parse_expression(debug)?;
-                            Ok(AstNode::ListAssignment(
+                        if list_accesses.is_empty() {
+                            Ok(AstNode::Assignment(
                                 Box::new(AstNode::Identifier(identifier)),
-                                Box::new(index),
                                 Box::new(value),
                             ))
                         } else {
-                            Ok(AstNode::ListAccess(
-                                Box::new(AstNode::Identifier(identifier)),
-                                Box::new(index),
-                            ))
+                            let mut current = AstNode::Identifier(identifier);
+                            for (i, index) in list_accesses.iter().enumerate() {
+                                if i == list_accesses.len() - 1 {
+                                    current = AstNode::ListAssignment(
+                                        Box::new(current),
+                                        Box::new(index.clone()),
+                                        Box::new(value.clone()),
+                                    );
+                                } else {
+                                    current = AstNode::ListAccess(
+                                        Box::new(current),
+                                        Box::new(index.clone()),
+                                    );
+                                }
+                            }
+                            Ok(current)
                         }
                     }
                     Some(Token::OpenParen) => {
@@ -220,7 +224,17 @@ impl Parser {
                         }
                         Ok(AstNode::ProcedureCall(identifier, args))
                     }
-                    _ => Ok(AstNode::Identifier(identifier)),
+                    _ => {
+                        if list_accesses.is_empty() {
+                            Ok(AstNode::Identifier(identifier))
+                        } else {
+                            let mut current = AstNode::Identifier(identifier);
+                            for index in list_accesses {
+                                current = AstNode::ListAccess(Box::new(current), Box::new(index));
+                            }
+                            Ok(current)
+                        }
+                    }
                 }
             }
             None => {
@@ -576,15 +590,15 @@ impl Parser {
                     _ => return Err("Expected identifier".to_string()),
                 };
 
-                if self.match_token(&Token::OpenBracket) {
+                let mut node = AstNode::Identifier(name.clone());
+
+                while let Some(Token::OpenBracket) = self.peek() {
+                    self.advance();
                     let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
                         return Err("Expected ']' after list index".to_string());
                     }
-                    return Ok(AstNode::ListAccess(
-                        Box::new(AstNode::Identifier(name)),
-                        Box::new(index),
-                    ));
+                    node = AstNode::ListAccess(Box::new(node), Box::new(index));
                 }
 
                 if self.match_token(&Token::OpenParen) {
@@ -600,7 +614,7 @@ impl Parser {
                     return Ok(AstNode::ProcedureCall(name, args));
                 }
 
-                Ok(AstNode::Identifier(name))
+                Ok(node)
             }
             Some(Token::FormattedString(template, vars)) => {
                 let template = template.clone();

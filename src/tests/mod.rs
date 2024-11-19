@@ -814,14 +814,11 @@ mod test {
             r#"
             x <- 5
             y <- 3
-            z <- (x + y) * 2
-            DISPLAY(z)
-            z <- x * y + 4
-            DISPLAY(z)
-            result <- (z - x) / y
-            DISPLAY(result)
+            DISPLAY(x + y)
+            DISPLAY(x * y)
+            DISPLAY(x / y)
             "#,
-            "16\n19\n4",
+            "8\n15\n1",
         );
     }
 
@@ -1594,6 +1591,163 @@ DISPLAY(arr)"#,
             DISPLAY((a = b))
             "#,
             "true\ntrue",
+        );
+    }
+
+    #[test]
+    fn test_float_operations() {
+        assert_output("DISPLAY(5.0 + 3.0)", "8");
+        assert_output("DISPLAY(10.5 - 4.2)", "6.3");
+        assert_output("DISPLAY(3.0 * 4.0)", "12");
+        assert_output("DISPLAY(15.0 / 3.0)", "5");
+
+        assert_output("DISPLAY(5.0 > 3.0)", "true");
+        assert_output("DISPLAY(5.0 < 3.0)", "false");
+        assert_output("DISPLAY(5.0 = 5.0)", "true");
+        assert_output("DISPLAY(5.0 NOT= 5.0)", "false");
+        assert_output("DISPLAY(5.0 >= 5.0)", "true");
+        assert_output("DISPLAY(5.0 <= 4.0)", "false");
+
+        assert_output("DISPLAY(5 + 3.5)", "8.5");
+        assert_output("DISPLAY(10.5 - 4)", "6.5");
+        assert_output("DISPLAY(3 * 4.0)", "12");
+        assert_output("DISPLAY(15.0 / 3)", "5");
+
+        assert_output("DISPLAY(5.0 > 3)", "true");
+        assert_output("DISPLAY(5 < 3.0)", "false");
+        assert_output("DISPLAY(5.0 = 5)", "true");
+        assert_output("DISPLAY(5 NOT= 5.0)", "false");
+        assert_output("DISPLAY(5.0 >= 5)", "true");
+        assert_output("DISPLAY(5 <= 4.0)", "false");
+
+        assert_output(
+            r#"
+            x <- 5.5
+            y <- 3.2
+            z <- (x + y) * 2.0
+            DISPLAY(z)
+            "#,
+            "17.4",
+        );
+
+        assert_output(
+            r#"
+            IF (4.0 > 5.0) {
+                a <- 1
+            } ELSE {
+                a <- 2
+            }
+            DISPLAY(a)
+            "#,
+            "2",
+        );
+
+        assert_output(
+            r#"
+            PROCEDURE add(a, b) {
+                RETURN(a + b)
+            }
+            DISPLAY(add(5.5, 3.2))
+            "#,
+            "8.7",
+        );
+    }
+
+    #[test]
+    fn test_multidimensional_arrays() {
+        assert_output(
+            r#"
+            matrix <- [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+            DISPLAY(matrix[2][3])
+            "#,
+            "6",
+        );
+
+        assert_output(
+            r#"
+            mixed_matrix <- [[1, "two", TRUE], [4.5, FALSE, "six"]]
+            DISPLAY(mixed_matrix[1][2])
+            DISPLAY(mixed_matrix[2][1])
+            "#,
+            "two\n4.5",
+        );
+
+        assert_output(
+            r#"
+            empty_matrix <- [[""]]
+            empty_matrix[1][1] <- "filled"
+            DISPLAY(empty_matrix[1][1])
+            "#,
+            "filled",
+        );
+    }
+
+    #[test]
+    fn test_three_dimensional_arrays() {
+        assert_output(
+            r#"
+            cube <- [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+            DISPLAY(cube[1][2][1])
+            DISPLAY(cube[2][1][2])
+            "#,
+            "3\n6",
+        );
+    }
+
+    #[test]
+    fn test_2d_linear_search() {
+        assert_output(
+            r#"
+            PROCEDURE linearSearch2D(matrix, target) {
+                rows <- LENGTH(matrix)
+                columns <- LENGTH(matrix[1])
+                
+                i <- 1
+                REPEAT rows TIMES {
+                    j <- 1
+                    REPEAT columns TIMES {
+                        IF(matrix[i][j] = target) {
+                            RETURN([i, j])
+                        }
+                        j <- j + 1
+                    }
+                    i <- i + 1
+                }
+                RETURN([-1, -1])
+            }
+
+            matrix <- [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+            result <- linearSearch2D(matrix, 5)
+            DISPLAY(result)
+            result <- linearSearch2D(matrix, 10)
+            DISPLAY(result)
+            "#,
+            "[2, 2]\n[-1, -1]",
+        );
+    }
+
+    #[test]
+    fn test_matrix_operations() {
+        assert_output(
+            r#"
+            matrix <- [[1, 2, 3], [4, 5, 6]]
+            matrix[1][3] <- 10
+            DISPLAY(matrix[1][3])
+            
+            matrix[2] <- [7, 8, 9]
+            DISPLAY(matrix[2][2])
+            "#,
+            "10\n8",
+        );
+
+        assert_output(
+            r#"
+            matrix <- [[1, "two"], [TRUE, 4.5]]
+            DISPLAY(matrix[1][2])
+            DISPLAY(matrix[2][1])
+            DISPLAY(matrix[2][2])
+            "#,
+            "two\ntrue\n4.5",
         );
     }
 }

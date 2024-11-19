@@ -668,10 +668,10 @@ fn evaluate_node(
             result
         }
         AstNode::ListAccess(list, index) => {
-            let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
+            let mut current_value = evaluate_node(list, Rc::clone(&env), debug)?;
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
-            match (list_val, index_val) {
+            match (current_value, index_val) {
                 (Value::List(elements), Value::Integer(i)) => {
                     let idx = i - 1;
                     if idx < 0 {
@@ -733,7 +733,37 @@ fn evaluate_node(
                     Err("Invalid list index".to_string())
                 }
             } else {
-                Err("Invalid list assignment target".to_string())
+                if let AstNode::ListAccess(inner_list, inner_index) = &**list {
+                    let mut list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
+                    let index_inner = evaluate_node(inner_index, Rc::clone(&env), debug)?;
+
+                    if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_inner)
+                    {
+                        let idx = i - 1;
+                        if idx >= 0 && (idx as usize) < elements.len() {
+                            if let Value::Integer(j) = index_val {
+                                let jdx = j - 1;
+                                if let Value::List(mut inner_elements) =
+                                    elements[idx as usize].clone()
+                                {
+                                    if jdx >= 0 && (jdx as usize) < inner_elements.len() {
+                                        inner_elements[jdx as usize] = new_val.clone();
+                                        elements[idx as usize] = Value::List(inner_elements);
+
+                                        if let AstNode::Identifier(name) = &**inner_list {
+                                            env.borrow_mut()
+                                                .set(name.clone(), Value::List(elements));
+                                            return Ok(new_val);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err("Invalid nested list assignment".to_string())
+                } else {
+                    Err("Invalid list assignment target".to_string())
+                }
             }
         }
 
@@ -1168,6 +1198,50 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
             let mut result = a.clone();
             result.extend(b.iter().cloned());
             Ok(Value::List(result))
+        }
+
+        (Value::Float(a), BinaryOperator::Eq, Value::Float(b)) => Ok(Value::Boolean(a == b)),
+        (Value::Float(a), BinaryOperator::NotEq, Value::Float(b)) => Ok(Value::Boolean(a != b)),
+        (Value::Float(a), BinaryOperator::Lt, Value::Float(b)) => Ok(Value::Boolean(a < b)),
+        (Value::Float(a), BinaryOperator::LtEq, Value::Float(b)) => Ok(Value::Boolean(a <= b)),
+        (Value::Float(a), BinaryOperator::Gt, Value::Float(b)) => Ok(Value::Boolean(a > b)),
+        (Value::Float(a), BinaryOperator::GtEq, Value::Float(b)) => Ok(Value::Boolean(a >= b)),
+
+        (Value::Integer(a), BinaryOperator::Eq, Value::Float(b)) => {
+            Ok(Value::Boolean(*a as f64 == *b))
+        }
+        (Value::Float(a), BinaryOperator::Eq, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a == *b as f64))
+        }
+        (Value::Integer(a), BinaryOperator::NotEq, Value::Float(b)) => {
+            Ok(Value::Boolean(*a as f64 != *b))
+        }
+        (Value::Float(a), BinaryOperator::NotEq, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a != *b as f64))
+        }
+        (Value::Integer(a), BinaryOperator::Lt, Value::Float(b)) => {
+            Ok(Value::Boolean((*a as f64) < *b))
+        }
+        (Value::Float(a), BinaryOperator::Lt, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a < *b as f64))
+        }
+        (Value::Integer(a), BinaryOperator::LtEq, Value::Float(b)) => {
+            Ok(Value::Boolean((*a as f64) <= *b))
+        }
+        (Value::Float(a), BinaryOperator::LtEq, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a <= *b as f64))
+        }
+        (Value::Integer(a), BinaryOperator::Gt, Value::Float(b)) => {
+            Ok(Value::Boolean((*a as f64) > *b))
+        }
+        (Value::Float(a), BinaryOperator::Gt, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a > *b as f64))
+        }
+        (Value::Integer(a), BinaryOperator::GtEq, Value::Float(b)) => {
+            Ok(Value::Boolean((*a as f64) >= *b))
+        }
+        (Value::Float(a), BinaryOperator::GtEq, Value::Integer(b)) => {
+            Ok(Value::Boolean(*a >= *b as f64))
         }
 
         _ => Err(format!(
