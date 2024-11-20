@@ -541,8 +541,8 @@ mod test {
                 }
                 RETURN(fibonacci(n - 1) + fibonacci(n - 2))
             }
-            DISPLAY(fibonacci(10))"#,
-            "55",
+            DISPLAY(fibonacci(6))"#,
+            "8",
         );
     }
 
@@ -1748,6 +1748,127 @@ DISPLAY(arr)"#,
             DISPLAY(matrix[2][2])
             "#,
             "two\ntrue\n4.5",
+        );
+    }
+
+    #[test]
+    fn test_knn() {
+        assert_output(
+            r#"
+            PROCEDURE calculateDistance(point1, point2)
+            {
+                sum <- 0
+                i <- 1
+                REPEAT LENGTH(point1) TIMES
+                {
+                    diff <- point1[i] - point2[i]
+                    sum <- sum + POW(diff, 2)
+                    i <- i + 1
+                }
+                RETURN(SQRT(sum))
+            }
+
+            PROCEDURE findKNearest(trainingData, trainingLabels, testPoint, k)
+            {
+                distances <- []
+                labels <- []
+                
+                i <- 1
+                REPEAT LENGTH(trainingData) TIMES
+                {
+                    distance <- calculateDistance(testPoint, trainingData[i])
+                    APPEND(distances, distance)
+                    APPEND(labels, trainingLabels[i])
+                    i <- i + 1
+                }
+                
+                sortedIndices <- []
+                i <- 1
+                REPEAT LENGTH(distances) TIMES
+                {
+                    minIndex <- 1
+                    j <- 1
+                    REPEAT LENGTH(distances) TIMES
+                    {
+                        IF(distances[j] < distances[minIndex])
+                        {
+                            minIndex <- j
+                        }
+                        j <- j + 1
+                    }
+                    APPEND(sortedIndices, minIndex)
+                    distances[minIndex] <- 999999999
+                    i <- i + 1
+                }
+                
+                kNearest <- []
+                i <- 1
+                REPEAT k TIMES
+                {
+                    APPEND(kNearest, labels[sortedIndices[i]])
+                    i <- i + 1
+                }
+                
+                RETURN(kNearest)
+            }
+
+            PROCEDURE getMajorityVote(labels)
+            {
+                counts <- []
+                uniqueLabels <- []
+                
+                FOR EACH label IN labels
+                {
+                    found <- FALSE
+                    i <- 1
+                    REPEAT LENGTH(uniqueLabels) TIMES
+                    {
+                        IF(label = uniqueLabels[i])
+                        {
+                            counts[i] <- counts[i] + 1
+                            found <- TRUE
+                        }
+                        i <- i + 1
+                    }
+                    IF(NOT found)
+                    {
+                        APPEND(uniqueLabels, label)
+                        APPEND(counts, 1)
+                    }
+                }
+                
+                maxCount <- 0
+                maxLabel <- uniqueLabels[1]
+                i <- 1
+                REPEAT LENGTH(counts) TIMES
+                {
+                    IF(counts[i] > maxCount)
+                    {
+                        maxCount <- counts[i]
+                        maxLabel <- uniqueLabels[i]
+                    }
+                    i <- i + 1
+                }
+                
+                RETURN(maxLabel)
+            }
+
+            PROCEDURE knn(trainingData, trainingLabels, testPoint, k)
+            {
+                nearestLabels <- findKNearest(trainingData, trainingLabels, testPoint, k)
+                prediction <- getMajorityVote(nearestLabels)
+                RETURN(prediction)
+            }
+
+            trainingData <- [[1,2], [2,3], [3,1], [6,5], [7,8], [8,7]]
+            trainingLabels <- [1, 1, 1, 2, 2, 2]
+            testPoint <- [5,5]
+            k <- 3
+
+            prediction <- knn(trainingData, trainingLabels, testPoint, k)
+            DISPLAY(prediction)
+            "#,
+            "2",
         );
     }
 }

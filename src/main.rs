@@ -1,5 +1,6 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::path::Path;
 
 mod interpreter;
 mod lexer;
@@ -9,35 +10,39 @@ use lexer::Lexer;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
-const HELP_MESSAGE: &str = r#"PseudoLang Compiler Usage:
-    fplc [OPTIONS] <input_file.psl> <output_file>
+const HELP_MESSAGE: &str = r#"PseudoLang Interpreter Usage:
+    fplc [OPTIONS] COMMAND [ARGS]
+
+COMMANDS:
+    run <input_file.psl>    Execute a PseudoLang program
 
 OPTIONS:
     -h, --help       Display this help message
     -v, --version    Display version information
-    --debug         Enable debug output during compilation
+    -d, --debug      Enable debug output during execution
 
-ARGUMENTS:
-    <input_file.psl>  Source file to compile (must have .psl extension)
-    <output_file>     Output file name (will add .exe on Windows)
-
-EXAMPLES:
-    fplc source.psl output
-    fplc --debug program.psl program.exe
-    fplc -v
-    fplc -h"#;
+Examples:
+    fplc run program.psl
+    fplc run --debug source.psl
+"#;
 
 #[derive(Debug)]
 struct Config {
+    command: Command,
     input_file: String,
-    output_file: String,
     debug: bool,
     show_version: bool,
     show_help: bool,
 }
 
+#[derive(Debug)]
+enum Command {
+    Run,
+    None,
+}
+
 fn parse_args() -> Result<Config, String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     if args.is_empty() {
         return Err(format!(
@@ -46,29 +51,55 @@ fn parse_args() -> Result<Config, String> {
         ));
     }
 
-    let debug = args.iter().any(|arg| arg == "--debug");
-    let args: Vec<String> = args.into_iter().filter(|arg| arg != "--debug").collect();
+    let mut debug = false;
+    let mut show_help = false;
+    let mut show_version = false;
+
+    let mut indices_to_remove = Vec::new();
+
+    for (index, arg) in args.iter().enumerate() {
+        if arg.starts_with("--") {
+            match arg.as_str() {
+                "--debug" => debug = true,
+                "--help" => show_help = true,
+                "--version" => show_version = true,
+                _ => {
+                    return Err(format!(
+                        "Unknown option: {}\n\nTip: Use -h or --help for detailed usage information.",
+                        arg
+                    ));
+                }
+            }
+            indices_to_remove.push(index);
+        } else if arg.starts_with('-') && arg.len() > 1 {
+            let chars = arg[1..].chars();
+            for c in chars {
+                match c {
+                    'd' => debug = true,
+                    'h' => show_help = true,
+                    'v' => show_version = true,
+                    _ => {
+                        return Err(format!(
+                            "Unknown option: -{}\n\nTip: Use -h or --help for detailed usage information.",
+                            c
+                        ));
+                    }
+                }
+            }
+            indices_to_remove.push(index);
+        }
+    }
+
+    for &index in indices_to_remove.iter().rev() {
+        args.remove(index);
+    }
 
     match args.get(0).map(String::as_str) {
-        Some("-h") | Some("--help") => Ok(Config {
-            input_file: String::new(),
-            output_file: String::new(),
-            debug: false,
-            show_version: false,
-            show_help: true,
-        }),
-        Some("-v") | Some("--version") => Ok(Config {
-            input_file: String::new(),
-            output_file: String::new(),
-            debug: false,
-            show_version: true,
-            show_help: false,
-        }),
-        Some(input_file) => {
+        Some("run") => {
             if args.len() < 2 {
-                return Err("Missing required argument: output_file\n\nTip: Use -h or --help for detailed usage information.".to_string());
+                return Err("Missing required argument: input_file\n\nTip: Use -h or --help for detailed usage information.".to_string());
             }
-
+            let input_file = args[1].clone();
             if !input_file.ends_with(".psl") {
                 return Err(format!(
                     "Input file must have .psl extension, got: {}\n\nTip: Use -h or --help for detailed usage information.",
@@ -77,18 +108,73 @@ fn parse_args() -> Result<Config, String> {
             }
 
             Ok(Config {
-                input_file: input_file.to_string(),
-                output_file: args[1].clone(),
+                command: Command::Run,
+                input_file,
                 debug,
-                show_version: false,
-                show_help: false,
+                show_version,
+                show_help,
             })
         }
+        Some(cmd) => Err(format!(
+            "Unknown command: {}\n\nTip: Use -h or --help for detailed usage information.",
+            cmd
+        )),
         None => Err(
-            "No arguments provided\n\nTip: Use -h or --help for detailed usage information."
+            "No command provided\n\nTip: Use -h or --help for detailed usage information."
                 .to_string(),
         ),
     }
+}
+
+fn process_file(
+    input_file: &str,
+    debug: bool,
+) -> Result<(Vec<lexer::Token>, parser::AstNode), String> {
+    let mut file = match fs::File::open(input_file) {
+        Ok(file) => file,
+        Err(error) => {
+            return Err(format!(
+                "Error opening file {}: {}\nPlease ensure the file exists and you have read permissions.",
+                input_file, error
+            ));
+        }
+    };
+
+    let mut source_code = String::new();
+    if let Err(error) = file.read_to_string(&mut source_code) {
+        return Err(format!("Error reading file {}: {}", input_file, error));
+    }
+
+    let mut lexer = Lexer::new(&source_code);
+    let tokens = lexer.tokenize();
+
+    if debug {
+        println!("\n=== Lexer Output ===");
+        println!("Tokens: {:?}", tokens);
+        println!("\n=== Parser Starting ===");
+    }
+
+    let ast = parser::parse(tokens.clone(), debug)?;
+
+    if debug {
+        println!("\n=== Parser Output ===");
+        println!("AST: {:#?}", ast);
+    }
+
+    Ok((tokens, ast))
+}
+
+fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
+    let (_, ast) = process_file(input_file, debug)?;
+
+    if debug {
+        println!("\n=== Starting Execution ===");
+        println!("Executing program...\n");
+    }
+
+    let output = interpreter::run(ast)?;
+    print!("{}", output);
+    Ok(())
 }
 
 fn main() {
@@ -112,125 +198,15 @@ fn main() {
 
     if config.debug {
         println!("\n=== Debug Mode Enabled ===\n");
-    } else {
-        println!("PseudoLang Compiler version {}", VERSION);
-        println!("Processing {} -> {}", config.input_file, config.output_file);
     }
 
-    let mut file = match fs::File::open(&config.input_file) {
-        Ok(file) => file,
-        Err(error) => {
-            eprintln!(
-                "Error opening file {}: {}\nPlease ensure the file exists and you have read permissions.",
-                config.input_file, error
-            );
-            std::process::exit(1);
-        }
+    let result = match config.command {
+        Command::Run => run_program(&config.input_file, config.debug),
+        Command::None => Ok(()),
     };
 
-    let mut source_code = String::new();
-    if let Err(error) = file.read_to_string(&mut source_code) {
-        eprintln!("Error reading file {}: {}", config.input_file, error);
+    if let Err(error) = result {
+        eprintln!("Error: {}", error);
         std::process::exit(1);
-    }
-
-    let mut lexer = Lexer::new(&source_code);
-    let tokens = lexer.tokenize();
-    if config.debug {
-        println!("\n=== Lexer Output ===");
-        println!("Tokens: {:?}", tokens);
-    }
-
-    if !config.debug {
-        println!("✓ Successfully lexed program");
-    }
-
-    if config.debug {
-        println!("\n=== Parser Starting ===");
-    }
-
-    match parser::parse(tokens, config.debug) {
-        Ok(ast) => {
-            if config.debug {
-                println!("\n=== Parser Output ===");
-                println!("AST: {:#?}", ast);
-                println!("\n=== Starting Execution ===");
-                println!("Executing program...");
-            }
-
-            if !config.debug {
-                println!("✓ Successfully parsed program");
-            }
-
-            match interpreter::run(ast) {
-                Ok(result) => {
-                    if config.debug {
-                        println!("Program output:");
-                        println!("{}", result);
-                    }
-
-                    #[cfg(target_os = "windows")]
-                    let output_file = if !config.output_file.ends_with(".exe") {
-                        format!("{}.exe", config.output_file)
-                    } else {
-                        config.output_file
-                    };
-
-                    #[cfg(not(target_os = "windows"))]
-                    let output_file = config.output_file;
-
-                    #[cfg(target_os = "windows")]
-                    let content = format!(
-                        "
-                        {}",
-                        result
-                            .lines()
-                            .map(|line| format!("echo {}", line.replace("\"", "\"\"")))
-                            .collect::<Vec<_>>()
-                            .join("\r\n")
-                    );
-
-                    #[cfg(not(target_os = "windows"))]
-                    let content = format!(
-                        "#!/bin/bash\n\
-                        {}",
-                        result
-                            .lines()
-                            .map(|line| format!("echo \"{}\"", line.replace("\"", "\\\"")))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    );
-
-                    if let Err(error) = fs::write(&output_file, content) {
-                        eprintln!("Error writing to file {}: {}", output_file, error);
-                        std::process::exit(1);
-                    }
-
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        if let Err(error) =
-                            fs::set_permissions(&output_file, fs::Permissions::from_mode(0o755))
-                        {
-                            eprintln!("Error setting permissions: {}", error);
-                            std::process::exit(1);
-                        }
-                    }
-
-                    if !config.debug {
-                        println!("✓ Successfully executed program");
-                        println!("✓ Output written to: {}", output_file);
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Error during execution: {}", err);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("Error parsing code: {}", err);
-            std::process::exit(1);
-        }
     }
 }
