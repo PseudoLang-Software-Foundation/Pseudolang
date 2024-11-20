@@ -1,6 +1,5 @@
 use std::fs;
-use std::io::{Read, Write};
-use std::path::Path;
+use std::io::Read;
 
 mod interpreter;
 mod lexer;
@@ -92,6 +91,16 @@ fn parse_args() -> Result<Config, String> {
 
     for &index in indices_to_remove.iter().rev() {
         args.remove(index);
+    }
+
+    if show_help || show_version {
+        return Ok(Config {
+            command: Command::None,
+            input_file: String::new(),
+            debug,
+            show_version,
+            show_help,
+        });
     }
 
     match args.get(0).map(String::as_str) {

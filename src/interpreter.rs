@@ -68,6 +68,7 @@ impl Environment {
         self.procedures.get(name).cloned()
     }
 
+    #[allow(dead_code)]
     fn append_to_list(&mut self, name: &str, value: Value) -> Result<Value, String> {
         if let Some(Value::List(mut elements)) = self.get(name) {
             elements.push(value.clone());
@@ -668,7 +669,7 @@ fn evaluate_node(
             result
         }
         AstNode::ListAccess(list, index) => {
-            let mut current_value = evaluate_node(list, Rc::clone(&env), debug)?;
+            let current_value = evaluate_node(list, Rc::clone(&env), debug)?;
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
             match (current_value, index_val) {
@@ -734,7 +735,7 @@ fn evaluate_node(
                 }
             } else {
                 if let AstNode::ListAccess(inner_list, inner_index) = &**list {
-                    let mut list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
+                    let list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
                     let index_inner = evaluate_node(inner_index, Rc::clone(&env), debug)?;
 
                     if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_inner)
@@ -1039,67 +1040,6 @@ fn evaluate_node(
                 Ok(Value::List(elements))
             } else {
                 Err("SORT requires a list as an argument".to_string())
-            }
-        }
-
-        AstNode::Remove(list_expr, index_expr) => {
-            if let (AstNode::Identifier(name), Value::Integer(i)) = (
-                &**list_expr,
-                evaluate_node(index_expr, Rc::clone(&env), debug)?,
-            ) {
-                let idx = i - 1;
-                let mut env_mut = env.borrow_mut();
-                if let Some(Value::List(mut elements)) = env_mut.get(name) {
-                    if idx >= 0 && (idx as usize) < elements.len() {
-                        let removed_value = elements.remove(idx as usize);
-                        env_mut.set(name.clone(), Value::List(elements));
-                        Ok(removed_value)
-                    } else {
-                        Err("List index out of bounds".to_string())
-                    }
-                } else {
-                    Err(format!("Variable {} is not a list", name))
-                }
-            } else {
-                Err("REMOVE requires a list variable and an integer index".to_string())
-            }
-        }
-        AstNode::Append(list_expr, value_expr) => {
-            let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
-            if let AstNode::Identifier(name) = &**list_expr {
-                let mut env_mut = env.borrow_mut();
-                if let Some(Value::List(mut elements)) = env_mut.get(name) {
-                    elements.push(value.clone());
-                    env_mut.set(name.clone(), Value::List(elements));
-                    Ok(value)
-                } else {
-                    Err(format!("Variable {} is not a list", name))
-                }
-            } else {
-                Err("APPEND requires a list variable".to_string())
-            }
-        }
-        AstNode::Insert(list_expr, index_expr, value_expr) => {
-            let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
-            if let (AstNode::Identifier(name), Value::Integer(i)) = (
-                &**list_expr,
-                evaluate_node(index_expr, Rc::clone(&env), debug)?,
-            ) {
-                let idx = i - 1;
-                let mut env_mut = env.borrow_mut();
-                if let Some(Value::List(mut elements)) = env_mut.get(name) {
-                    if idx >= 0 && (idx as usize) <= elements.len() {
-                        elements.insert(idx as usize, value.clone());
-                        env_mut.set(name.clone(), Value::List(elements));
-                        Ok(value)
-                    } else {
-                        Err("List index out of bounds".to_string())
-                    }
-                } else {
-                    Err(format!("Variable {} is not a list", name))
-                }
-            } else {
-                Err("INSERT requires a list variable and an integer index".to_string())
             }
         }
         _ => Err(format!("Unimplemented node type: {:?}", node)),

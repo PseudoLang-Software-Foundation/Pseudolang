@@ -343,8 +343,6 @@ impl Parser {
             | Some(Token::Equal)
             | Some(Token::NotEqual)
             | Some(Token::Random)
-            | Some(Token::ToString)
-            | Some(Token::ToNum)
             | Some(Token::ListRemove)
             | Some(Token::ListAppend)
             | Some(Token::ListInsert)
@@ -766,37 +764,6 @@ impl Parser {
         Ok(AstNode::ProcedureDecl(name, params, Box::new(body)))
     }
 
-    fn parse_display(&mut self, debug: bool) -> Result<AstNode, String> {
-        match self.advance() {
-            Some(Token::Display(Some(boxed_token))) => match *boxed_token {
-                Token::String(s) => Ok(AstNode::Display(Some(Box::new(AstNode::String(s))))),
-                _ => Err("Expected string literal after DISPLAY".to_string()),
-            },
-            Some(Token::Display(None)) => {
-                if self.match_token(&Token::OpenParen) {
-                    let expr = if self.peek() == Some(&Token::CloseParen) {
-                        None
-                    } else {
-                        Some(Box::new(self.parse_expression(debug)?))
-                    };
-                    if !self.match_token(&Token::CloseParen) {
-                        return Err("Expected ')' after expression".to_string());
-                    }
-                    Ok(AstNode::Display(expr))
-                } else {
-                    if self.is_expression_start() {
-                        Ok(AstNode::Display(Some(Box::new(
-                            self.parse_expression(debug)?,
-                        ))))
-                    } else {
-                        Ok(AstNode::Display(None))
-                    }
-                }
-            }
-            _ => Err("Expected DISPLAY token".to_string()),
-        }
-    }
-
     fn parse_display_inline(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
@@ -809,7 +776,7 @@ impl Parser {
         Ok(AstNode::DisplayInline(Box::new(expr)))
     }
 
-    fn parse_comment(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_comment(&mut self, _debug: bool) -> Result<AstNode, String> {
         self.advance();
         match self.advance() {
             Some(Token::String(text)) => Ok(AstNode::Comment(text)),
@@ -817,7 +784,7 @@ impl Parser {
         }
     }
 
-    fn parse_import(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_import(&mut self, _debug: bool) -> Result<AstNode, String> {
         self.advance();
         match self.advance() {
             Some(Token::String(path)) => Ok(AstNode::Import(path)),
@@ -825,64 +792,7 @@ impl Parser {
         }
     }
 
-    fn parse_assignment_or_call(&mut self, debug: bool) -> Result<AstNode, String> {
-        let identifier = match self.advance() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected identifier".to_string()),
-        };
-
-        match self.peek() {
-            Some(Token::OpenBracket) => {
-                self.advance();
-                let index = self.parse_expression(debug)?;
-                if !self.match_token(&Token::CloseBracket) {
-                    return Err("Expected ']'".to_string());
-                }
-                if self.match_token(&Token::Assign) {
-                    let value = self.parse_expression(debug)?;
-                    Ok(AstNode::ListAssignment(
-                        Box::new(AstNode::Identifier(identifier)),
-                        Box::new(index),
-                        Box::new(value),
-                    ))
-                } else {
-                    Ok(AstNode::ListAccess(
-                        Box::new(AstNode::Identifier(identifier)),
-                        Box::new(index),
-                    ))
-                }
-            }
-            Some(Token::Assign) => {
-                self.advance();
-                let value = self.parse_expression(debug)?;
-                Ok(AstNode::Assignment(
-                    Box::new(AstNode::Identifier(identifier)),
-                    Box::new(value),
-                ))
-            }
-            Some(Token::OpenParen) => {
-                self.advance();
-                let mut args = Vec::new();
-                while let Some(token) = self.peek() {
-                    if token == &Token::CloseParen {
-                        break;
-                    }
-                    if !args.is_empty() {
-                        if !self.match_token(&Token::Comma) {
-                            return Err("Expected comma between arguments".to_string());
-                        }
-                    }
-                    args.push(self.parse_expression(debug)?);
-                }
-                if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')'".to_string());
-                }
-                Ok(AstNode::ProcedureCall(identifier, args))
-            }
-            _ => Ok(AstNode::Identifier(identifier)),
-        }
-    }
-
+    #[allow(dead_code)]
     fn synchronize(&mut self) {
         while let Some(token) = self.peek() {
             match token {

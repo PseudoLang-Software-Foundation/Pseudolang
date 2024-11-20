@@ -2,7 +2,7 @@
 
 [package]
 name = "fplc"
-version = "0.9.46"
+version = "0.9.47"
 edition = "2021"
 description = "A pseudolang interpreter written in Rust"
 
