@@ -2,9 +2,9 @@ name: Build and Test Pseudolang
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -57,8 +57,9 @@ jobs:
       - name: Prepare Artifacts
         run: |
           mkdir -p release
+          mkdir -p installer
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
-            mkdir -p installer
+            cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
             cp release/fplc-x64.exe installer/fplc.exe
             cp LICENSE installer/
             cp installer/Pseudolang-Logo.ico installer/
