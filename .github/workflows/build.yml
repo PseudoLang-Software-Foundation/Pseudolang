@@ -58,7 +58,6 @@ jobs:
         run: |
           mkdir -p release
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
-            cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
             mkdir -p installer
             cp release/fplc-x64.exe installer/fplc.exe
             cp LICENSE installer/
@@ -82,19 +81,21 @@ jobs:
           cp release/installer/pseudolang-setup-x64.exe release/
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pseudolang-${{ matrix.target }}
           path: release/*
           retention-days: 7
+          if-no-files-found: error
 
       - name: Upload Installer Artifact
         if: matrix.target == 'x86_64-pc-windows-gnu'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pseudolang-installer
           path: release/installer/pseudolang-setup-x64.exe
           retention-days: 7
+          if-no-files-found: error
 
   publish:
     name: Publish Release
@@ -106,9 +107,11 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Download All Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: pseudolang-*
+          merge-multiple: true
 
       - name: Prepare Release Files
         run: |
