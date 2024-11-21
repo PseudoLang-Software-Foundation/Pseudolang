@@ -1,4 +1,4 @@
-name: Build and Test Pseudolang
+name: Build, Test, and Publish Pseudolang
 
 on:
   push:
