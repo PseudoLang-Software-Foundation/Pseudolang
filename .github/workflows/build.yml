@@ -62,7 +62,7 @@ jobs:
             mkdir -p installer
             cp release/fplc-x64.exe installer/fplc.exe
             cp LICENSE installer/
-            cp assets/Pseudolang-Logo.ico installer/
+            cp installer/Pseudolang-Logo.ico installer/
           else
             cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
             chmod +x release/fplc-linux-x64
