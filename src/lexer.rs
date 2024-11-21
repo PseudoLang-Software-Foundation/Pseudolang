@@ -220,12 +220,22 @@ impl<'a> Lexer<'a> {
                     }
                     if c == '{' {
                         let mut var = String::new();
+                        let mut brace_count = 1;
                         while let Some(c) = self.chars.next() {
                             self.pos += 1;
-                            if c == '}' {
-                                break;
+                            if c == '{' {
+                                brace_count += 1;
+                                var.push(c);
+                            } else if c == '}' {
+                                brace_count -= 1;
+                                if brace_count == 0 {
+                                    break;
+                                } else {
+                                    var.push(c);
+                                }
+                            } else {
+                                var.push(c);
                             }
-                            var.push(c);
                         }
                         vars.push(var);
                         string.push_str("{}");
@@ -260,10 +270,24 @@ impl<'a> Lexer<'a> {
                     let mut string = String::new();
                     while let Some(c) = self.chars.next() {
                         self.pos += 1;
-                        if c == '"' {
+                        if c == '\\' {
+                            if let Some(escaped_char) = self.chars.next() {
+                                self.pos += 1;
+                                match escaped_char {
+                                    'n' => string.push('\n'),
+                                    't' => string.push('\t'),
+                                    'r' => string.push('\r'),
+                                    'b' => string.push('\x08'),
+                                    '\\' => string.push('\\'),
+                                    '"' => string.push('"'),
+                                    _ => string.push(escaped_char),
+                                }
+                            }
+                        } else if c == '"' {
                             break;
+                        } else {
+                            string.push(c);
                         }
-                        string.push(c);
                     }
                     Some(Token::String(string))
                 }

@@ -1,4 +1,4 @@
-use crate::lexer::Token;
+use crate::lexer::{Lexer, Token};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -52,7 +52,7 @@ pub enum AstNode {
     Import(String),
 
     RawString(String),
-    FormattedString(String, Vec<String>),
+    FormattedString(String, Vec<AstNode>),
 }
 
 #[derive(Debug, Clone)]
@@ -618,7 +618,15 @@ impl Parser {
                 let template = template.clone();
                 let vars = vars.clone();
                 self.advance();
-                Ok(AstNode::FormattedString(template, vars))
+                let mut expressions = Vec::new();
+                for var in vars {
+                    let mut var_lexer = Lexer::new(&var);
+                    let var_tokens = var_lexer.tokenize();
+                    let mut var_parser = Parser::new(var_tokens);
+                    let expr = var_parser.parse_expression(debug)?;
+                    expressions.push(expr);
+                }
+                Ok(AstNode::FormattedString(template, expressions))
             }
             Some(Token::Input) => {
                 self.advance();
@@ -640,7 +648,17 @@ impl Parser {
                 Some(Token::Float(f)) => Ok(AstNode::Float(f)),
                 Some(Token::String(s)) => Ok(AstNode::String(s)),
                 Some(Token::RawString(s)) => Ok(AstNode::RawString(s)),
-                Some(Token::FormattedString(s, vars)) => Ok(AstNode::FormattedString(s, vars)),
+                Some(Token::FormattedString(s, vars)) => {
+                    let mut expressions = Vec::new();
+                    for var in vars {
+                        let mut var_lexer = Lexer::new(&var);
+                        let var_tokens = var_lexer.tokenize();
+                        let mut var_parser = Parser::new(var_tokens);
+                        let expr = var_parser.parse_expression(debug)?;
+                        expressions.push(expr);
+                    }
+                    Ok(AstNode::FormattedString(s, expressions))
+                }
                 Some(Token::Boolean(b)) => Ok(AstNode::Boolean(b)),
                 Some(Token::Identifier(name)) => Ok(AstNode::Identifier(name)),
                 Some(Token::OpenParen) => {

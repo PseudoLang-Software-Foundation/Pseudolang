@@ -9,7 +9,7 @@ use lexer::Lexer;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
-const HELP_MESSAGE: &str = r#"PseudoLang Interpreter Usage:
+const HELP_MESSAGE: &str = r#"PseudoLang Usage:
     fplc [OPTIONS] COMMAND [ARGS]
 
 COMMANDS:
@@ -201,7 +201,7 @@ fn main() {
     }
 
     if config.show_version {
-        println!("PseudoLang Compiler version {}", VERSION);
+        println!("PseudoLang version {}", VERSION);
         return;
     }
 

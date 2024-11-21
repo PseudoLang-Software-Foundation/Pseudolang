@@ -9,7 +9,7 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.47-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.48-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -26,9 +26,9 @@ There is also an **installer** you can download in [releases](https://github.com
 
 ## Use
 
-To use the compiled versions, run the executable and pass two parameters as the input and output file (pseudolang programs end with `.psl`). Ex: `./fplc main.psl main.exe`
+To use the compiled versions, run the executable and pass two parameters as the input and output file (pseudolang programs end with `.psl`). Ex: `fplc run main.psl`
 
-It is highly recommended to add the executable to your PATH, so you can simply run `fplc`.
+If `fplc` is not added to path or environment variables, make sure to execute the binary specifically.
 
 Free Pseudolang Compiler = fplc (like gcc :)
 
@@ -59,11 +59,15 @@ The file `src/tests/mod.rs`, as it contains various unit tests for Pseudolang.
 <summary>Functionality</summary>
 
 - [ ] Dictionaries
-- [ ] Multithreading
-- [ ] Library support (remote procedures)
+- [ ] Better error handling (line, column)
+- [ ] Time
 - [ ] Networking
 - [ ] File IO
+- [ ] Library support (remote procedures)
+- [ ] Graphics
 - [ ] Meta programming
+- [ ] Multithreading
+- [ ] Compiler
 
 </details>
 

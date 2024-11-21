@@ -872,19 +872,23 @@ fn evaluate_node(
 
         AstNode::RawString(s) => Ok(Value::String(s.clone())),
 
-        AstNode::FormattedString(template, vars) => {
-            let mut values = Vec::new();
-            for var_name in vars {
-                if let Some(val) = env.borrow().get(var_name) {
-                    values.push(value_to_string(&val));
-                } else {
-                    return Err(format!("Undefined variable in format string: {}", var_name));
+        AstNode::FormattedString(s, expressions) => {
+            let mut result = String::new();
+            let mut placeholders = s.split("{}");
+            let mut expr_iter = expressions.iter();
+
+            if let Some(first_part) = placeholders.next() {
+                result.push_str(first_part);
+            }
+
+            for part in placeholders {
+                if let Some(expr) = expr_iter.next() {
+                    let value = evaluate_node(expr, Rc::clone(&env), debug)?;
+                    result.push_str(&value_to_string(&value));
                 }
+                result.push_str(part);
             }
-            let mut result = template.to_string();
-            for value in values {
-                result = result.replacen("{}", &value, 1);
-            }
+
             Ok(Value::String(result))
         }
 

@@ -2,7 +2,7 @@
 
 chmod +x build_release.sh
 
-mkdir -p release
+mkdir -p release/installer
 
 echo "Building for Windows..."
 cross build --target x86_64-pc-windows-gnu --release

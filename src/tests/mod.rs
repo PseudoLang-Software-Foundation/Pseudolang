@@ -368,6 +368,17 @@ mod test {
     }
 
     #[test]
+    fn test_escape_characters() {
+        assert_output(r#"DISPLAY("Hello\tWorld")"#, "Hello\tWorld");
+
+        assert_output(r#"DISPLAY("C:\\Program Files\\")"#, r"C:\Program Files\");
+
+        assert_output(r#"DISPLAY("Line1\rLine2")"#, "Line1\rLine2");
+
+        assert_output(r#"DISPLAY("ABC\bD")"#, "ABC\x08D");
+    }
+
+    #[test]
     fn test_string_operations() {
         let test_cases = vec![
             (r#"DISPLAY(CONCAT("Hello, ", "World!"))"#, "Hello, World!\n"),
@@ -1752,7 +1763,7 @@ DISPLAY(arr)"#,
     }
 
     #[test]
-    fn test_knn() {
+    fn test_ml_algorithms() {
         assert_output(
             r#"
             PROCEDURE calculateDistance(point1, point2)
@@ -1869,6 +1880,46 @@ DISPLAY(arr)"#,
             DISPLAY(prediction)
             "#,
             "2",
+        );
+
+        assert_output(
+            r#"
+        PROCEDURE linearRegression(x, y) {
+            n <- LENGTH(x)
+            sumX <- 0
+            sumY <- 0
+            sumXY <- 0 
+            sumXSquare <- 0
+            
+            i <- 1
+            REPEAT n TIMES {
+                sumX <- sumX + x[i]
+                sumY <- sumY + y[i]
+                sumXY <- sumXY + x[i] * y[i]
+                sumXSquare <- sumXSquare + x[i] * x[i]
+                i <- i + 1
+            }
+            
+            slope <- (n * sumXY - sumX * sumY) / (n * sumXSquare - sumX * sumX)
+            intercept <- (sumY - slope * sumX) / n
+            
+            RETURN([slope, intercept])
+        }
+
+        PROCEDURE predict(x, coefficients) {
+            slope <- coefficients[1]
+            intercept <- coefficients[2]
+            RETURN(slope * x + intercept)
+        }
+
+        x <- [1, 2, 3, 4, 5]
+        y <- [2, 4, 6, 8, 10]
+        
+        coefficients <- linearRegression(x, y)
+        prediction <- predict(6, coefficients)
+        DISPLAY(FLOOR(prediction))
+        "#,
+            "12",
         );
     }
 }
