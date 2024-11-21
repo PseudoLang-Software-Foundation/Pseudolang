@@ -66,6 +66,7 @@ jobs:
           else
             cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
             chmod +x release/fplc-linux-x64
+          fi
 
       - name: Install NSIS
         if: matrix.target == 'x86_64-pc-windows-gnu'
