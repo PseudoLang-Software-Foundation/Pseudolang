@@ -7,6 +7,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions: write-all
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -101,6 +103,10 @@ jobs:
     name: Publish Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      discussions: write
+      pull-requests: write
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '.') && startsWith(github.event.head_commit.message, '0.') || startsWith(github.event.head_commit.message, '1.') || startsWith(github.event.head_commit.message, '2.') || startsWith(github.event.head_commit.message, '3.') || startsWith(github.event.head_commit.message, '4.') || startsWith(github.event.head_commit.message, '5.') || startsWith(github.event.head_commit.message, '6.') || startsWith(github.event.head_commit.message, '7.') || startsWith(github.event.head_commit.message, '8.') || startsWith(github.event.head_commit.message, '9.')
     
     steps:
@@ -126,46 +132,18 @@ jobs:
           cp artifacts/linux/fplc-linux-x64 release/
           chmod +x release/fplc-linux-x64
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.head_commit.message }}
-          release_name: Release v${{ github.event.head_commit.message }}
-          draft: false
-          prerelease: false
+          name: Release v${{ github.event.head_commit.message }}
           body: |
             See the full changelog: https://github.com/${{ github.repository }}/compare/v${{ github.event.before }}...v${{ github.event.head_commit.message }}
-
-      - name: Upload Windows Binary
-        uses: actions/upload-release-asset@v1
+          draft: false
+          prerelease: false
+          files: |
+            ./release/fplc-x64.exe
+            ./release/pseudolang-setup-x64.exe
+            ./release/fplc-linux-x64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/fplc-x64.exe
-          asset_name: fplc-x64.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload Windows Installer
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: hashFiles('./release/pseudolang-setup-x64.exe') != ''
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/pseudolang-setup-x64.exe
-          asset_name: pseudolang-setup-x64.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload Linux Binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/fplc-linux-x64
-          asset_name: fplc-linux-x64
-          asset_content_type: application/octet-stream
