@@ -255,10 +255,8 @@ fn evaluate_node(
         AstNode::DisplayInline(expr) => {
             let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
-            // Print the output
             print!("{}", output);
             stdout().flush().map_err(|e| e.to_string())?;
-            // Accumulate the output
             env.borrow_mut().output.push_str(&output);
             Ok(Value::Unit)
         }
