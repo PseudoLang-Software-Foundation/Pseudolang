@@ -125,8 +125,8 @@ jobs:
           else
             git tag "$TAG_NAME"
             git push origin "$TAG_NAME"
-            echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
           fi
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
           
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
