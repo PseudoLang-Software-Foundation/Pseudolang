@@ -101,7 +101,7 @@ jobs:
     name: Publish Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'v') && matches(github.event.head_commit.message, '^[0-9]+\.[0-9]+\.[0-9]+')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '.') && startsWith(github.event.head_commit.message, '0.') || startsWith(github.event.head_commit.message, '1.') || startsWith(github.event.head_commit.message, '2.') || startsWith(github.event.head_commit.message, '3.') || startsWith(github.event.head_commit.message, '4.') || startsWith(github.event.head_commit.message, '5.') || startsWith(github.event.head_commit.message, '6.') || startsWith(github.event.head_commit.message, '7.') || startsWith(github.event.head_commit.message, '8.') || startsWith(github.event.head_commit.message, '9.')
     
     steps:
       - uses: actions/checkout@v3
@@ -112,15 +112,6 @@ jobs:
           path: artifacts
           pattern: pseudolang-*
           merge-multiple: true
-
-      - name: Extract Version
-        id: version
-        run: |
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oP '(?<=v)\d+\.\d+\.\d+' || true)
-          if [ -z "$VERSION" ]; then
-            VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oP '\d+\.\d+\.\d+' || true)
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Prepare Release Files
         run: |
@@ -136,20 +127,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: Release v${{ steps.version.outputs.version }}
+          tag_name: v${{ github.event.head_commit.message }}
+          release_name: Release v${{ github.event.head_commit.message }}
           draft: false
           prerelease: false
           body: |
-            **Release Notes** for version ${{ steps.version.outputs.version }}
-            
-            This release was automatically generated from commit: ${{ github.event.head_commit.message }}
-            
-            ### What's Changed
-            ${{ github.event.head_commit.message }}
-            
-            ### Full Changelog
-            https://github.com/${{ github.repository }}/commits/${{ github.sha }}
+            See the full changelog: https://github.com/${{ github.repository }}/compare/v${{ github.event.before }}...v${{ github.event.head_commit.message }}
 
       - name: Upload Release Assets
         uses: actions/upload-release-asset@v1
