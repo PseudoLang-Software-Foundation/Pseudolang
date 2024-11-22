@@ -32,6 +32,14 @@ mod test {
     }
 
     #[test]
+    fn test_string_split() {
+        assert_output(
+            r#"DISPLAY(SPLIT("Hello, World!", ","))"#,
+            "[Hello,  World!]",
+        );
+    }
+
+    #[test]
     fn test_variable_assignment() {
         assert_output("a <- 42\nDISPLAY(a)", "42");
         assert_output("a <- 5\nb <- a + 3\nDISPLAY(b)", "8");
@@ -1058,6 +1066,8 @@ DISPLAY(str[0])"#,
         assert_output("DISPLAY(GCD(17, 5))", "1");
         assert_output("DISPLAY(FACTORIAL(0))", "1");
         assert_output("DISPLAY(FACTORIAL(5))", "120");
+        assert_output(r#"DISPLAY(ROUND(4.5))"#, "5");
+        assert_output(r#"DISPLAY(ROUND(4.4))"#, "4");
 
         let float_tests = vec![
             ("DISPLAY(ABS(-5.5))", 5.5),

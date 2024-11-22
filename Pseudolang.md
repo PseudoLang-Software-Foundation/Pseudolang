@@ -358,10 +358,16 @@ CLASS className()
 Creates a class object
 
 `r"a"`
+
 Creates a raw string.
 
 `f"a{b}"`
+
 Creates a formatted string, the string value of the variable is added to the string.
+
+`SLEEP(x)`
+
+Pauses program execution for x seconds. x can be an integer or a floating-point number.
 
 `EXIT()`
 

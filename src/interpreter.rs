@@ -2,8 +2,10 @@ use crate::parser::{AstNode, BinaryOperator, UnaryOperator};
 use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io::{self, stdout, Write};
 use std::rc::Rc;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -236,10 +238,14 @@ fn evaluate_node(
             let value = if let Some(expr) = expr {
                 let result = evaluate_node(expr, Rc::clone(&env), debug)?;
                 let output = value_to_string(&result);
+                print!("{}\n", output);
+                stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push_str(&output);
                 env.borrow_mut().output.push('\n');
                 result
             } else {
+                print!("\n");
+                stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push('\n');
                 Value::Unit
             };
@@ -249,6 +255,10 @@ fn evaluate_node(
         AstNode::DisplayInline(expr) => {
             let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
+            // Print the output
+            print!("{}", output);
+            stdout().flush().map_err(|e| e.to_string())?;
+            // Accumulate the output
             env.borrow_mut().output.push_str(&output);
             Ok(Value::Unit)
         }
@@ -279,6 +289,23 @@ fn evaluate_node(
             }
 
             let result = match name.as_str() {
+                "SLEEP" => {
+                    if args.len() != 1 {
+                        return Err("SLEEP requires one argument".to_string());
+                    }
+                    let seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match seconds {
+                        Value::Integer(n) => {
+                            thread::sleep(Duration::from_secs(n as u64));
+                            Ok(Value::Unit)
+                        }
+                        Value::Float(f) => {
+                            thread::sleep(Duration::from_secs_f64(f));
+                            Ok(Value::Unit)
+                        }
+                        _ => Err("SLEEP requires a numeric argument".to_string()),
+                    }
+                }
                 "CONCAT" => {
                     if args.len() != 2 {
                         return Err("CONCAT requires two arguments".to_string());

@@ -136,7 +136,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.head_commit.message }}
-          name: Release v${{ github.event.head_commit.message }}
+          name: Pseudolang v${{ github.event.head_commit.message }}
           body: |
             See the full changelog: https://github.com/${{ github.repository }}/compare/v${{ github.event.before }}...v${{ github.event.head_commit.message }}
           draft: false

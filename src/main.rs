@@ -181,12 +181,11 @@ fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
         println!("Executing program...\n");
     }
 
-    let output = interpreter::run(ast)?;
-    print!("{}", output);
+    interpreter::run(ast)?;
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = match parse_args() {
         Ok(config) => config,
         Err(error) => {
@@ -197,12 +196,12 @@ fn main() {
 
     if config.show_help {
         println!("{}", HELP_MESSAGE);
-        return;
+        return Ok(());
     }
 
     if config.show_version {
         println!("PseudoLang version {}", VERSION);
-        return;
+        return Ok(());
     }
 
     if config.debug {
@@ -218,4 +217,6 @@ fn main() {
         eprintln!("Error: {}", error);
         std::process::exit(1);
     }
+
+    Ok(())
 }

@@ -9,7 +9,7 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.49-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.491-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -46,7 +46,7 @@ In order to compile the project yourself, you will need to have rust installed.
 
 ## Examples
 
-[Pseudolang.md](Pseudolang.md) contains a full explanation of Pseudolang and features specific to PseudoLang.
+[Pseudolang.md](Pseudolang.md) contains a full explanation of Collegeboard's Pseudocode and many features specific to PseudoLang.
 
 The file `src/tests/mod.rs` also contains various unit tests (examples of code) for Pseudolang.
 
@@ -54,6 +54,7 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 
 - [ ] Debian package
 - [ ] GitHub issue template
+- [ ] Proper documentation
 
 <details>
 <summary>Functionality</summary>
@@ -67,8 +68,14 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 - [ ] Graphics
 - [ ] Meta programming
 - [ ] Multithreading
-- [ ] Compiler
+- [ ] Bundled compiler
 
+<details>
+<summary>Misc</summary>
+
+- [ ] Testing for INPUT and SLEEP (mocking framework)
+
+</details>
 </details>
 
 ## Issues
