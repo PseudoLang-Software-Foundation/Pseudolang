@@ -120,9 +120,13 @@ jobs:
           git config --global user.email "actions@github.com"
           TAG_NAME=$(git log -1 --pretty=%s | grep -oE '\b[0-9]+\.[0-9]+\.[0-9]+\b')
           TAG_NAME="v${TAG_NAME}"
-          git tag "$TAG_NAME"
-          git push origin "$TAG_NAME"
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists. Skipping tag creation."
+          else
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+            echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          fi
           
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
