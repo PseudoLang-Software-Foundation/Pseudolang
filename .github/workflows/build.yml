@@ -155,5 +155,9 @@ jobs:
           name: Pseudolang ${{ env.TAG_NAME }}
           body: |
             See the full changelog: https://github.com/${{ github.repository }}/compare/${{ env.TAG_NAME }}~1...${{ env.TAG_NAME }}
+          files: |
+            release/fplc-x64.exe
+            release/fplc-linux-x64
+            release/pseudolang-setup-x64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
