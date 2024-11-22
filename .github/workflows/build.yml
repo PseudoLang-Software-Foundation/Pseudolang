@@ -118,10 +118,11 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          TAG_NAME=$(git log -1 --pretty=%s | head -n 1 | awk '{print $1}')
+          TAG_NAME=$(git log -1 --pretty=%s | grep -oE '\b[0-9]+\.[0-9]+\.[0-9]+\b')
           TAG_NAME="v${TAG_NAME}"
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
           
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
@@ -146,15 +147,9 @@ jobs:
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.event.head_commit.message }}
-          name: Pseudolang v${{ github.event.head_commit.message }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: Pseudolang ${{ env.TAG_NAME }}
           body: |
-            See the full changelog: https://github.com/${{ github.repository }}/compare/v${{ github.event.before }}...v${{ github.event.head_commit.message }}
-          draft: false
-          prerelease: false
-          files: |
-            ./release/fplc-x64.exe
-            ./release/pseudolang-setup-x64.exe
-            ./release/fplc-linux-x64
+            See the full changelog: https://github.com/${{ github.repository }}/compare/${{ env.TAG_NAME }}~1...${{ env.TAG_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
