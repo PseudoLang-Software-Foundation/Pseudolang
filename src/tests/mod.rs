@@ -1932,4 +1932,195 @@ DISPLAY(arr)"#,
             "12",
         );
     }
+
+    #[test]
+    fn test_timestamp_functions() {
+        let result = run_test("DISPLAY(TIMESTAMP())").unwrap();
+        let timestamp = result.trim().parse::<i64>().unwrap();
+        assert!(timestamp > 0);
+
+        assert_output(
+            r#"
+            ts <- 1625329272
+            DISPLAY(TIME(ts))
+            "#,
+            "2021-07-03 16:21:12",
+        );
+
+        assert_output(
+            r#"
+            dt <- "2021-07-03 16:21:12.000000"
+            DISPLAY(TIMESTAMP(dt))
+            "#,
+            "1625329272",
+        );
+
+        let roundtrip = run_test(
+            r#"
+            ts <- TIMESTAMP()
+            t <- TIME(ts)
+            ts2 <- TIMESTAMP(t)
+            DISPLAY(ts = ts2)
+        "#,
+        )
+        .unwrap();
+        assert_eq!(roundtrip.trim(), "true");
+    }
+
+    #[test]
+    fn test_timezone_functions() {
+        let result = run_test(
+            r#"
+            ts <- 1625329272
+            DISPLAY(TIMEZONE(ts, "America/New_York"))
+        "#,
+        )
+        .unwrap();
+        assert_eq!(result.trim(), "2021-07-03 12:21:12");
+
+        let result = run_test(
+            r#"
+            zones <- TIMEZONES()
+            found <- FALSE
+            FOR EACH zone IN zones {
+                IF(zone = "Europe/London") {
+                    found <- TRUE
+                }
+            }
+            DISPLAY(found)
+        "#,
+        )
+        .unwrap();
+        assert_eq!(result.trim(), "true");
+
+        assert!(run_test(
+            r#"
+            ts <- TIMESTAMP()
+            DISPLAY(TIMEZONE(ts, "Invalid/Zone"))
+        "#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_try_catch() {
+        assert_output(
+            r#"
+            TRY {
+                DISPLAY("Before error")
+                x <- 1 / 0
+                DISPLAY("After error")
+            } CATCH (err) {
+                DISPLAY("Caught error: " + err)
+            }
+            "#,
+            "Before error\nCaught error: Division by zero",
+        );
+
+        assert_output(
+            r#"
+            TRY {
+                DISPLAY("No error here")
+                x <- 42
+            } CATCH (err) {
+                DISPLAY("This won't run")
+            }
+            "#,
+            "No error here",
+        );
+
+        assert_output(
+            r#"
+            TRY {
+                list <- [1, 2, 3]
+                DISPLAY(list[4])
+            } CATCH (err) {
+                DISPLAY("List error: " + err)
+            }
+            "#,
+            "List error: List index out of bounds: 4 (size: 3)",
+        );
+    }
+
+    #[test]
+    fn test_trim() {
+        assert_output(
+            r#"
+            str <- "  hello  "
+            trimmed <- TRIM(str)
+            DISPLAY(trimmed)
+            "#,
+            "hello",
+        );
+
+        assert_output(r#"DISPLAY(TRIM("  spaces  "))"#, "spaces");
+
+        assert_output(r#"DISPLAY(TRIM("\t\ntabs\t\n"))"#, "tabs");
+    }
+
+    #[test]
+    fn test_replace() {
+        assert_output(
+            r#"
+            str <- "hello world"
+            result <- REPLACE(str, "o", "0")
+            DISPLAY(result)
+            "#,
+            "hell0 w0rld",
+        );
+
+        assert_output(r#"DISPLAY(REPLACE("hello hello", "hello", "hi"))"#, "hi hi");
+
+        assert_output(r#"DISPLAY(REPLACE("aaa", "a", "b"))"#, "bbb");
+    }
+
+    #[test]
+    fn test_case_conversion() {
+        assert_output(
+            r#"
+            str <- "Hello World"
+            upper <- UPPERCASE(str)
+            lower <- LOWERCASE(str)
+            DISPLAY(upper)
+            DISPLAY(lower)
+            "#,
+            "HELLO WORLD\nhello world",
+        );
+
+        assert_output(r#"DISPLAY(UPPERCASE("abc123"))"#, "ABC123");
+
+        assert_output(r#"DISPLAY(LOWERCASE("ABC123"))"#, "abc123");
+    }
+
+    #[test]
+    fn test_string_functions_error_handling() {
+        assert!(run_test("TRIM(123)").is_err());
+        assert!(run_test("REPLACE(123, 'a', 'b')").is_err());
+        assert!(run_test("UPPERCASE(123)").is_err());
+        assert!(run_test("LOWERCASE(123)").is_err());
+
+        assert!(run_test(r#"REPLACE("hello", 123, "a")"#).is_err());
+        assert!(run_test(r#"REPLACE("hello", "a", 123)"#).is_err());
+    }
+
+    #[test]
+    fn test_string_function_combinations() {
+        assert_output(
+            r#"
+            str <- "  HELLO world  "
+            result <- TRIM(LOWERCASE(str))
+            DISPLAY(result)
+            "#,
+            "hello world",
+        );
+
+        assert_output(
+            r#"
+            str <- "hello WORLD"
+            result <- REPLACE(UPPERCASE(str), "L", "1")
+            DISPLAY(result)
+            "#,
+            "HE11O WOR1D",
+        );
+    }
 }

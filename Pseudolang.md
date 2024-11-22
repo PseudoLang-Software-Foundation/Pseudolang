@@ -311,6 +311,22 @@ Returns a single string with the two given strings combined
 
 Splits a string into parts based on the given delimiter and returns a list of strings.
 
+`TRIM(string)`
+
+Removes leading and trailing whitespace from a string.
+
+`REPLACE(string, from, to)`
+
+Returns a new string with all occurrences of `from` replaced with `to`.
+
+`UPPERCASE(string)`
+
+Converts all characters in the string to uppercase.
+
+`LOWERCASE(string)`
+
+Converts all characters in the string to lowercase.
+
 ## Data Types
 
 `1`
@@ -368,6 +384,37 @@ Creates a formatted string, the string value of the variable is added to the str
 `SLEEP(x)`
 
 Pauses program execution for x seconds. x can be an integer or a floating-point number.
+
+`TIMESTAMP()`
+
+Returns the current Unix timestamp (seconds since January 1, 1970 UTC).
+
+`TIMESTAMP(datetime)`
+
+Converts a datetime string in format "YYYY-MM-DD HH:MM:SS.ffffff" to Unix timestamp.
+
+`TIME(timestamp)`
+
+Converts a Unix timestamp to a datetime string in format "YYYY-MM-DD HH:MM:SS.ffffff" in local time.
+
+`TIMEZONE(timestamp, timezone)`  
+Converts a Unix timestamp to a datetime string in the specified timezone.
+Example timezones: "America/New_York", "Europe/London", "Asia/Tokyo"
+
+`TIMEZONES()`
+Returns a list of all available timezone names.
+
+```psl
+TRY {
+    DISPLAY("Before error")
+    x <- 1 / 0 COMMENT Causes error
+    DISPLAY("After error") COMMENT Never executes
+} CATCH (err) {
+    DISPLAY("Caught error: " + err)  COMMENT Will display "Caught error: Division by zero"
+}
+```
+
+The try-catch statement allows you to handle errors that might occur during program execution. Any statements inside the try block that cause an error will stop execution of that block and transfer control to the catch block. The error message is stored in the variable specified in parentheses after catch and can be used inside the catch block.
 
 `EXIT()`
 

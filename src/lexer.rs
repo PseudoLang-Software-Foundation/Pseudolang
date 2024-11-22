@@ -81,6 +81,8 @@ pub enum Token {
     False,
     Random,
     Sort,
+    Try,
+    Catch,
 }
 
 pub struct Lexer<'a> {
@@ -396,6 +398,10 @@ impl<'a> Lexer<'a> {
                     "TOSTRING" => Some(Token::ToString),
                     "TONUM" => Some(Token::ToNum),
                     "FOR" => Some(Token::For),
+                    "TRIM" => Some(Token::Identifier("TRIM".to_string())),
+                    "REPLACE" => Some(Token::Identifier("REPLACE".to_string())),
+                    "UPPERCASE" => Some(Token::Identifier("UPPERCASE".to_string())),
+                    "LOWERCASE" => Some(Token::Identifier("LOWERCASE".to_string())),
                     "EACH" => Some(Token::Each),
                     "IN" => Some(Token::In),
                     "PROCEDURE" => Some(Token::Procedure),
@@ -411,6 +417,8 @@ impl<'a> Lexer<'a> {
                     "LENGTH" => Some(Token::ListLength),
                     "RANDOM" => Some(Token::Random),
                     "SORT" => Some(Token::Sort),
+                    "TRY" => Some(Token::Try),
+                    "CATCH" => Some(Token::Catch),
                     _ => Some(Token::Identifier(identifier)),
                 }
             }

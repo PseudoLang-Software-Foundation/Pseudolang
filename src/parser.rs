@@ -53,6 +53,11 @@ pub enum AstNode {
 
     RawString(String),
     FormattedString(String, Vec<AstNode>),
+    TryCatch {
+        try_block: Box<AstNode>,
+        error_var: Option<String>,
+        catch_block: Box<AstNode>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +151,39 @@ impl Parser {
         );
 
         match self.peek() {
+            Some(Token::Try) => {
+                self.advance();
+                let try_block = self.parse_block(debug)?;
+
+                while let Some(Token::Newline) = self.peek() {
+                    self.advance();
+                }
+
+                if !self.match_token(&Token::Catch) {
+                    return Err("Expected 'catch' after try block".to_string());
+                }
+
+                let mut error_var = None;
+                if self.match_token(&Token::OpenParen) {
+                    if let Some(Token::Identifier(name)) = self.advance() {
+                        error_var = Some(name);
+                    } else {
+                        return Err("Expected identifier after 'catch('".to_string());
+                    }
+
+                    if !self.match_token(&Token::CloseParen) {
+                        return Err("Expected ')' after catch variable".to_string());
+                    }
+                }
+
+                let catch_block = self.parse_block(debug)?;
+
+                Ok(AstNode::TryCatch {
+                    try_block: Box::new(try_block),
+                    error_var,
+                    catch_block: Box::new(catch_block),
+                })
+            }
             Some(Token::ListAppend) => self.parse_list_append(debug),
             Some(Token::ListRemove) => self.parse_list_remove(debug),
             Some(Token::ListInsert) => self.parse_list_insert(debug),

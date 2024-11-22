@@ -681,6 +681,132 @@ fn evaluate_node(
                         _ => Err("SPLIT requires two string arguments".to_string()),
                     }
                 }
+                "TRIM" => {
+                    if args.len() != 1 {
+                        return Err("TRIM requires one argument".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    if let Value::String(s) = str_val {
+                        Ok(Value::String(s.trim().to_string()))
+                    } else {
+                        Err("TRIM requires a string argument".to_string())
+                    }
+                }
+                "REPLACE" => {
+                    if args.len() != 3 {
+                        return Err("REPLACE requires three arguments".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let from_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    let to_val = evaluate_node(&args[2], Rc::clone(&env), debug)?;
+                    match (str_val, from_val, to_val) {
+                        (Value::String(s), Value::String(from), Value::String(to)) => {
+                            Ok(Value::String(s.replace(&from, &to)))
+                        }
+                        _ => Err("REPLACE requires three string arguments".to_string()),
+                    }
+                }
+                "UPPERCASE" => {
+                    if args.len() != 1 {
+                        return Err("UPPERCASE requires one argument".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    if let Value::String(s) = str_val {
+                        Ok(Value::String(s.to_uppercase()))
+                    } else {
+                        Err("UPPERCASE requires a string argument".to_string())
+                    }
+                }
+                "LOWERCASE" => {
+                    if args.len() != 1 {
+                        return Err("LOWERCASE requires one argument".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    if let Value::String(s) = str_val {
+                        Ok(Value::String(s.to_lowercase()))
+                    } else {
+                        Err("LOWERCASE requires a string argument".to_string())
+                    }
+                }
+                "TIMESTAMP" => match args.len() {
+                    0 => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_err(|e| e.to_string())?;
+                        Ok(Value::Integer(now.as_secs() as i64))
+                    }
+                    1 => {
+                        let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        if let Value::String(dt) = datetime {
+                            use chrono::NaiveDateTime;
+                            match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
+                                Ok(dt) => Ok(Value::Integer(dt.and_utc().timestamp())),
+                                Err(e) => Err(format!("Invalid datetime format: {}", e)),
+                            }
+                        } else {
+                            Err("TIMESTAMP requires a datetime string".to_string())
+                        }
+                    }
+                    _ => Err("TIMESTAMP requires 0 or 1 arguments".to_string()),
+                },
+                "TIME" => {
+                    if args.len() != 1 {
+                        return Err("TIME requires one argument".to_string());
+                    }
+                    let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    if let Value::Integer(ts) = timestamp {
+                        use chrono::{TimeZone, Utc};
+                        let dt = Utc
+                            .timestamp_opt(ts, 0)
+                            .single()
+                            .ok_or("Invalid timestamp")?;
+                        Ok(Value::String(dt.naive_local().to_string()))
+                    } else {
+                        Err("TIME requires an integer timestamp".to_string())
+                    }
+                }
+                "TIMEZONE" => {
+                    if args.len() != 2 {
+                        return Err(
+                            "TIMEZONE requires two arguments: timestamp and timezone".to_string()
+                        );
+                    }
+                    let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let tz_name = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+
+                    if let (Value::Integer(ts), Value::String(tz)) = (timestamp, tz_name) {
+                        use chrono::{TimeZone, Utc};
+                        use chrono_tz::Tz;
+
+                        let dt_utc = Utc
+                            .timestamp_opt(ts, 0)
+                            .single()
+                            .ok_or("Invalid timestamp")?;
+
+                        let tz: Tz = tz
+                            .parse()
+                            .map_err(|_| format!("Invalid timezone: {}", tz))?;
+
+                        let dt_tz = dt_utc.with_timezone(&tz);
+                        Ok(Value::String(dt_tz.naive_local().to_string()))
+                    } else {
+                        Err(
+                            "TIMEZONE requires a timestamp (integer) and timezone name (string)"
+                                .to_string(),
+                        )
+                    }
+                }
+                "TIMEZONES" => {
+                    if !args.is_empty() {
+                        return Err("TIMEZONES takes no arguments".to_string());
+                    }
+                    use chrono_tz::TZ_VARIANTS;
+                    let tzs: Vec<Value> = TZ_VARIANTS
+                        .iter()
+                        .map(|tz| Value::String(tz.name().to_string()))
+                        .collect();
+                    Ok(Value::List(tzs))
+                }
                 _ => {
                     let procedure = env
                         .borrow()
@@ -1100,6 +1226,34 @@ fn evaluate_node(
                 Ok(Value::List(elements))
             } else {
                 Err("SORT requires a list as an argument".to_string())
+            }
+        }
+        AstNode::TryCatch {
+            try_block,
+            error_var,
+            catch_block,
+        } => {
+            let try_env = Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
+
+            match evaluate_node(try_block, Rc::clone(&try_env), debug) {
+                Ok(result) => {
+                    env.borrow_mut().output.push_str(&try_env.borrow().output);
+                    Ok(result)
+                }
+                Err(error) => {
+                    env.borrow_mut().output.push_str(&try_env.borrow().output);
+
+                    let catch_env =
+                        Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
+                    if let Some(var_name) = error_var {
+                        catch_env
+                            .borrow_mut()
+                            .set(var_name.clone(), Value::String(error));
+                    }
+                    let result = evaluate_node(catch_block, Rc::clone(&catch_env), debug)?;
+                    env.borrow_mut().output.push_str(&catch_env.borrow().output);
+                    Ok(result)
+                }
             }
         }
         _ => Err(format!("Unimplemented node type: {:?}", node)),
