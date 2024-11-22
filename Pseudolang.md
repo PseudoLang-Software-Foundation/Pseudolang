@@ -307,6 +307,14 @@ Returns a string of characters from index `start` to index `end` of the given st
 `CONCAT("ab", "cd")`
 Returns a single string with the two given strings combined
 
+`CONTAINS(string, text)`
+
+Returns TRUE if the string contains the given text, FALSE otherwise.
+
+`FIND(string, text)`
+
+Returns the index position of the first occurrence of text in string (1-based indexing). Returns -1 if text is not found.
+
 `SPLIT(string, delimiter)`
 
 Splits a string into parts based on the given delimiter and returns a list of strings.

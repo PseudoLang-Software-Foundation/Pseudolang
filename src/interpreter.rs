@@ -807,6 +807,31 @@ fn evaluate_node(
                         .collect();
                     Ok(Value::List(tzs))
                 }
+                "CONTAINS" => {
+                    if args.len() != 2 {
+                        return Err("CONTAINS requires two arguments".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let text_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (str_val, text_val) {
+                        (Value::String(s), Value::String(t)) => Ok(Value::Boolean(s.contains(&t))),
+                        _ => Err("CONTAINS requires two string arguments".to_string()),
+                    }
+                }
+                "FIND" => {
+                    if args.len() != 2 {
+                        return Err("FIND requires two arguments".to_string());
+                    }
+                    let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let text_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (str_val, text_val) {
+                        (Value::String(s), Value::String(t)) => match s.find(&t) {
+                            Some(index) => Ok(Value::Integer((index + 1) as i64)),
+                            None => Ok(Value::Integer(-1)),
+                        },
+                        _ => Err("FIND requires two string arguments".to_string()),
+                    }
+                }
                 _ => {
                     let procedure = env
                         .borrow()

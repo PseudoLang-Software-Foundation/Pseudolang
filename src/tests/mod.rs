@@ -2123,4 +2123,37 @@ DISPLAY(arr)"#,
             "HE11O WOR1D",
         );
     }
+
+    #[test]
+    fn test_string_search() {
+        assert_output(
+            r#"
+        DISPLAY(CONTAINS("Hello World", "World"))
+        DISPLAY(CONTAINS("Hello World", "Goodbye"))
+        DISPLAY(CONTAINS("Hello", "ell"))
+        DISPLAY(CONTAINS("", ""))
+        "#,
+            "true\nfalse\ntrue\ntrue",
+        );
+
+        assert_output(
+            r#"
+        DISPLAY(FIND("Hello World", "World"))
+        DISPLAY(FIND("Hello World", "Goodbye"))
+        DISPLAY(FIND("Hello", "ell"))
+        DISPLAY(FIND("Testing", "t"))
+        "#,
+            "7\n-1\n2\n4",
+        );
+
+        assert_output(
+            r#"
+        text <- "The quick brown fox"
+        needle <- "quick"
+        DISPLAY(CONTAINS(text, needle))
+        DISPLAY(FIND(text, needle))
+        "#,
+            "true\n5",
+        );
+    }
 }
