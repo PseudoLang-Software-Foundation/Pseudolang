@@ -1,10 +1,10 @@
-name: Build and Test Pseudolang
+name: Build, Test, and Publish Pseudolang
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -57,42 +57,109 @@ jobs:
       - name: Prepare Artifacts
         run: |
           mkdir -p release
+          mkdir -p installer
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
             cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
+            cp release/fplc-x64.exe installer/fplc.exe
+            cp LICENSE installer/
           else
             cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
             chmod +x release/fplc-linux-x64
           fi
 
+      - name: Install NSIS
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+
+      - name: Build Windows Installer
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          mkdir -p release/installer
+          makensis installer/pseudolang.nsi
+          cp release/installer/pseudolang-setup-x64.exe release/
+
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pseudolang-${{ matrix.target }}
           path: release/*
           retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload Installer Artifact
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-installer
+          path: release/installer/pseudolang-setup-x64.exe
+          retention-days: 7
+          if-no-files-found: error
 
   publish:
-    name: Publish Artifacts
+    name: Publish Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '.') && startsWith(github.event.head_commit.message, '0.') || startsWith(github.event.head_commit.message, '1.') || startsWith(github.event.head_commit.message, '2.') || startsWith(github.event.head_commit.message, '3.') || startsWith(github.event.head_commit.message, '4.') || startsWith(github.event.head_commit.message, '5.') || startsWith(github.event.head_commit.message, '6.') || startsWith(github.event.head_commit.message, '7.') || startsWith(github.event.head_commit.message, '8.') || startsWith(github.event.head_commit.message, '9.')
     
     steps:
       - uses: actions/checkout@v3
       
       - name: Download All Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: pseudolang-*
+          merge-multiple: true
 
-      - name: Create Release Directory
+      - name: Prepare Release Files
         run: |
-          mkdir -p final_release
-          cp -r artifacts/*/* final_release/
-          
-      - name: Upload Release Artifacts
-        uses: actions/upload-artifact@v3
+          mkdir -p release
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/fplc-x64.exe release/
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe release/
+          cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fplc-linux-x64 release/
+          chmod +x release/fplc-linux-x64
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: pseudolang-all-platforms
-          path: final_release/*
-          retention-days: 30
+          tag_name: v${{ github.event.head_commit.message }}
+          release_name: Release v${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+          body: |
+            See the full changelog: https://github.com/${{ github.repository }}/compare/v${{ github.event.before }}...v${{ github.event.head_commit.message }}
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/fplc-x64.exe
+          asset_name: fplc-x64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Installer Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/pseudolang-setup-x64.exe
+          asset_name: pseudolang-setup-x64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/fplc-linux-x64
+          asset_name: fplc-linux-x64
+          asset_content_type: application/octet-stream

@@ -307,15 +307,15 @@ Returns a single string with the two given strings combined
 
 `1`
 
-Integer (32 bit)
+Integer (64 bit)
 
 `0.1`
 
-Float (32 bit)
+Float (64 bit)
 
 `"a"`
 
-String (32 bit)
+String (64 bit)
 
 `TRUE` or `FALSE`
 
