@@ -625,6 +625,37 @@ fn evaluate_node(
                         _ => Err("MAX requires two numeric arguments".to_string()),
                     }
                 }
+                "EXIT" => {
+                    std::process::exit(0);
+                }
+                "ROUND" => {
+                    if args.len() != 1 {
+                        return Err("ROUND requires one argument".to_string());
+                    }
+                    let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    match x {
+                        Value::Float(f) => Ok(Value::Integer(f.round() as i64)),
+                        Value::Integer(n) => Ok(Value::Integer(n)),
+                        _ => Err("ROUND requires a numeric argument".to_string()),
+                    }
+                }
+                "SPLIT" => {
+                    if args.len() != 2 {
+                        return Err("SPLIT requires two arguments".to_string());
+                    }
+                    let string_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let delimiter_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (string_val, delimiter_val) {
+                        (Value::String(s), Value::String(d)) => {
+                            let parts: Vec<Value> = s
+                                .split(&d)
+                                .map(|part| Value::String(part.to_string()))
+                                .collect();
+                            Ok(Value::List(parts))
+                        }
+                        _ => Err("SPLIT requires two string arguments".to_string()),
+                    }
+                }
                 _ => {
                     let procedure = env
                         .borrow()

@@ -138,6 +138,10 @@ Returns the larger value of a and b.
 
 Returns the Euclidean norm, sqrt(x*x + y*y).
 
+`ROUND(x)`
+
+Returns the value of x rounded to the nearest integer.
+
 ## Relational and Boolean Operators
 
 `a = b`
@@ -303,6 +307,10 @@ Returns a string of characters from index `start` to index `end` of the given st
 `CONCAT("ab", "cd")`
 Returns a single string with the two given strings combined
 
+`SPLIT(string, delimiter)`
+
+Splits a string into parts based on the given delimiter and returns a list of strings.
+
 ## Data Types
 
 `1`
@@ -354,6 +362,10 @@ Creates a raw string.
 
 `f"a{b}"`
 Creates a formatted string, the string value of the variable is added to the string.
+
+`EXIT()`
+
+Terminates program execution immediately.
 
 ## Limitations
 
