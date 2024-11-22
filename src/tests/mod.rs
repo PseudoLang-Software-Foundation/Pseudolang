@@ -19,6 +19,24 @@ mod test {
     }
 
     #[test]
+    fn test_display() {
+        assert_output("DISPLAY(42)", "42");
+        assert_output("DISPLAY(TRUE)", "true");
+        assert_output(r#"DISPLAY("Hello")"#, "Hello");
+        assert_output("DISPLAY([1, 2, 3])", "[1, 2, 3]");
+        assert_output("DISPLAY(5.5)", "5.5");
+        assert_output("DISPLAY(-42)", "-42");
+        assert_output("DISPLAY(FALSE)", "false");
+        assert_output("DISPLAY([])", "[]");
+        assert_output(
+            r#"
+                    DISPLAYINLINE("Hello, ")
+                    DISPLAYINLINE("World!")"#,
+            "Hello, World!",
+        );
+    }
+
+    #[test]
     fn test_basic_arithmetic() {
         assert_output("DISPLAY(5 + 3)", "8");
         assert_output("DISPLAY(10 - 4)", "6");
@@ -1134,16 +1152,6 @@ DISPLAY(str[0])"#,
                 Err(e) => panic!("Test failed for input '{}': {}", input, e),
             }
         }
-    }
-
-    #[test]
-    fn test_misc() {
-        assert_output(
-            r#"
-                    DISPLAYINLINE("Hello, ")
-                    DISPLAYINLINE("World!")"#,
-            "Hello, World!",
-        );
     }
 
     #[test]

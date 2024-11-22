@@ -339,13 +339,13 @@ impl Parser {
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after INPUT".to_string());
                 }
-                let prompt = if let Some(Token::String(_)) = self.peek() {
+                let prompt = if self.peek() != Some(&Token::CloseParen) {
                     Some(Box::new(self.parse_expression(debug)?))
                 } else {
                     None
                 };
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after INPUT expression".to_string());
+                    return Err("Expected ')' after INPUT".to_string());
                 }
                 Ok(AstNode::Input(prompt))
             }
@@ -671,7 +671,7 @@ impl Parser {
                 if !self.match_token(&Token::OpenParen) {
                     return Err("Expected '(' after INPUT".to_string());
                 }
-                let prompt = if let Some(Token::String(_)) = self.peek() {
+                let prompt = if self.peek() != Some(&Token::CloseParen) {
                     Some(Box::new(self.parse_expression(debug)?))
                 } else {
                     None

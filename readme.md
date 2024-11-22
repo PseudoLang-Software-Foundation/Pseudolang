@@ -9,7 +9,7 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.495-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.496-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -61,7 +61,6 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 
 - [ ] Dictionaries
 - [ ] Better error handling (line, column)
-- [ ] Time
 - [ ] Networking
 - [ ] File IO
 - [ ] System integration (terminal commands, process management, environment variables)
@@ -75,6 +74,7 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 <summary>Misc</summary>
 
 - [ ] Testing for INPUT and SLEEP (mocking framework)
+- [ ] More escape characters
 
 </details>
 </details>
