@@ -115,7 +115,7 @@ impl<'a> Lexer<'a> {
                 }
                 Token::CommentBlock => {
                     let mut found_end = false;
-                    while let Some(_) = self.chars.next() {
+                    while self.chars.next().is_some() {
                         self.pos += 1;
 
                         if self.input[self.pos..].starts_with("COMMENTBLOCK") {

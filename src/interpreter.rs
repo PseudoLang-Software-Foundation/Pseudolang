@@ -153,13 +153,10 @@ fn evaluate_node(
                 if debug {
                     println!("Assigning {} = {:?}", name, val);
                 }
-                match &**value {
-                    AstNode::FormattedString(_, _) => {
-                        let output = value_to_string(&val);
-                        env.borrow_mut().output.push_str(&output);
-                        env.borrow_mut().output.push('\n');
-                    }
-                    _ => {}
+                if let AstNode::FormattedString(_, _) = &**value {
+                    let output = value_to_string(&val);
+                    env.borrow_mut().output.push_str(&output);
+                    env.borrow_mut().output.push('\n');
                 }
                 env.borrow_mut().set(name.clone(), val.clone());
                 Ok(val)
@@ -238,13 +235,13 @@ fn evaluate_node(
             let value = if let Some(expr) = expr {
                 let result = evaluate_node(expr, Rc::clone(&env), debug)?;
                 let output = value_to_string(&result);
-                print!("{}\n", output);
+                println!("{}", output);
                 stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push_str(&output);
                 env.borrow_mut().output.push('\n');
                 result
             } else {
-                print!("\n");
+                println!("");
                 stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push('\n');
                 Value::Unit

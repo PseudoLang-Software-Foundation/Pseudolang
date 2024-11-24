@@ -319,19 +319,16 @@ impl Parser {
             Some(Token::Import) => self.parse_import(debug),
             Some(Token::Return) => {
                 self.advance();
-                match self.peek() {
-                    Some(Token::OpenParen) => {
-                        self.advance();
-                        let expr = self.parse_expression(debug)?;
-                        if !self.match_token(&Token::CloseParen) {
-                            return Err("Expected ')' after return expression".to_string());
-                        }
-                        Ok(AstNode::Return(Box::new(expr)))
+                if let Some(Token::OpenParen) = self.peek() {
+                    self.advance();
+                    let expr = self.parse_expression(debug)?;
+                    if !self.match_token(&Token::CloseParen) {
+                        return Err("Expected ')' after return expression".to_string());
                     }
-                    _ => {
-                        let expr = self.parse_expression(debug)?;
-                        Ok(AstNode::Return(Box::new(expr)))
-                    }
+                    Ok(AstNode::Return(Box::new(expr)))
+                } else {
+                    let expr = self.parse_expression(debug)?;
+                    Ok(AstNode::Return(Box::new(expr)))
                 }
             }
             Some(Token::Input) => {
@@ -980,32 +977,29 @@ impl Parser {
         Self::debug_print(debug, "Starting repeat parse");
         self.advance();
 
-        match self.peek() {
-            Some(Token::Until) => {
+        if self.peek() == Some(&Token::Until) {
+            self.advance();
+            if !self.match_token(&Token::OpenParen) {
+                return Err("Expected '(' after REPEAT UNTIL".to_string());
+            }
+            let condition = self.parse_expression(debug)?;
+            if !self.match_token(&Token::CloseParen) {
+                return Err("Expected ')' after condition".to_string());
+            }
+
+            while let Some(Token::Newline) = self.peek() {
                 self.advance();
-                if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after REPEAT UNTIL".to_string());
-                }
-                let condition = self.parse_expression(debug)?;
-                if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after condition".to_string());
-                }
-
-                while let Some(Token::Newline) = self.peek() {
-                    self.advance();
-                }
-
-                let body = self.parse_block(debug)?;
-                Ok(AstNode::RepeatUntil(Box::new(body), Box::new(condition)))
             }
-            _ => {
-                let times = self.parse_expression(debug)?;
-                if !self.match_token(&Token::Times) {
-                    return Err("Expected TIMES after repeat count".to_string());
-                }
-                let body = self.parse_block(debug)?;
-                Ok(AstNode::RepeatTimes(Box::new(times), Box::new(body)))
+
+            let body = self.parse_block(debug)?;
+            Ok(AstNode::RepeatUntil(Box::new(body), Box::new(condition)))
+        } else {
+            let times = self.parse_expression(debug)?;
+            if !self.match_token(&Token::Times) {
+                return Err("Expected TIMES after repeat count".to_string());
             }
+            let body = self.parse_block(debug)?;
+            Ok(AstNode::RepeatTimes(Box::new(times), Box::new(body)))
         }
     }
 
