@@ -255,6 +255,10 @@ Evaluates to the number of elements in aList (1 through length).
 
 Returns a new list that is a sorted version of `aList` (must be an array of integers). The sorting is done in ascending order.
 
+`RANGE(start (optional), end)`
+
+Creates a new list containing integers from start (1 by default) to end inclusive.
+
 `aList + bList`
 
 The `+` operator can be used to concatenate two lists. This creates a new list containing all the elements of `aList` followed by all the elements of `bList`.

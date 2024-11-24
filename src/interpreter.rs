@@ -832,6 +832,39 @@ fn evaluate_node(
                         _ => Err("FIND requires two string arguments".to_string()),
                     }
                 }
+                "RANGE" => match args.len() {
+                    1 => {
+                        let end = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        if let Value::Integer(end_val) = end {
+                            if end_val < 1 {
+                                return Err("RANGE end value must be greater than 0".to_string());
+                            }
+                            let list: Vec<Value> =
+                                (1..=end_val).map(|i| Value::Integer(i)).collect();
+                            Ok(Value::List(list))
+                        } else {
+                            Err("RANGE requires integer arguments".to_string())
+                        }
+                    }
+                    2 => {
+                        let start = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        let end = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                        if let (Value::Integer(start_val), Value::Integer(end_val)) = (start, end) {
+                            if end_val < start_val {
+                                return Err(
+                                    "RANGE end value must be greater than or equal to start value"
+                                        .to_string(),
+                                );
+                            }
+                            let list: Vec<Value> =
+                                (start_val..=end_val).map(|i| Value::Integer(i)).collect();
+                            Ok(Value::List(list))
+                        } else {
+                            Err("RANGE requires integer arguments".to_string())
+                        }
+                    }
+                    _ => Err("RANGE requires one or two arguments".to_string()),
+                },
                 _ => {
                     let procedure = env
                         .borrow()

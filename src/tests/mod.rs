@@ -1388,6 +1388,66 @@ DISPLAY(arr)"#,
     }
 
     #[test]
+    fn test_calc_functions() {
+        assert_output(
+            r#"
+            PROCEDURE DERIVATIVE(coefficients, exponents)
+            {
+                result_coeffs <- []
+                result_exps <- []
+                i <- 1
+                
+                REPEAT LENGTH(coefficients) TIMES
+                {
+                    IF (exponents[i] NOT= 0)
+                    {
+                        new_coeff <- coefficients[i] * exponents[i]
+                        new_exp <- exponents[i] - 1
+                        APPEND(result_coeffs, new_coeff)
+                        APPEND(result_exps, new_exp)
+                    }
+                    i <- i + 1
+                }
+                RETURN([result_coeffs, result_exps])
+            }
+
+            PROCEDURE ANTIDERIVATIVE(coefficients, exponents)
+            {
+                result_coeffs <- []
+                result_exps <- []
+                i <- 1
+                
+                REPEAT LENGTH(coefficients) TIMES
+                {
+                    new_exp <- exponents[i] + 1
+                    new_coeff <- coefficients[i] / new_exp
+                    APPEND(result_coeffs, new_coeff)
+                    APPEND(result_exps, new_exp)
+                    i <- i + 1
+                }
+                APPEND(result_coeffs, 0)
+                APPEND(result_exps, 0)
+                RETURN([result_coeffs, result_exps])
+            }
+
+            coeffs <- [3, 2, 1]
+            exps <- [2, 1, 0]
+
+            deriv <- DERIVATIVE(coeffs, exps)
+            DISPLAY("Derivative coefficients: " + TOSTRING(deriv[1]))
+            DISPLAY("Derivative exponents: " + TOSTRING(deriv[2]))
+
+            coeffs2 <- deriv[1]
+            exps2 <- deriv[2]
+
+            antideriv <- ANTIDERIVATIVE(coeffs2, exps2)
+            DISPLAY("Antiderivative coefficients: " + TOSTRING(antideriv[1]))
+            DISPLAY("Antiderivative exponents: " + TOSTRING(antideriv[2]))
+        "#, "Derivative coefficients: [6, 2]\nDerivative exponents: [1, 0]\nAntiderivative coefficients: [3, 2, 0]\nAntiderivative exponents: [2, 1, 0]",
+        );
+    }
+
+    #[test]
     fn test_heap_sort() {
         assert_output(
             r#"
@@ -2162,6 +2222,30 @@ DISPLAY(arr)"#,
         DISPLAY(FIND(text, needle))
         "#,
             "true\n5",
+        );
+    }
+
+    #[test]
+    fn test_range() {
+        assert_output("DISPLAY(RANGE(5))", "[1, 2, 3, 4, 5]");
+        assert_output("DISPLAY(RANGE(2, 5))", "[2, 3, 4, 5]");
+        assert_output("DISPLAY(RANGE(1))", "[1]");
+        assert_output("DISPLAY(RANGE(1, 1))", "[1]");
+
+        assert_output(
+            r#"
+            list <- RANGE(3)
+            DISPLAY(list[2])
+            "#,
+            "2",
+        );
+
+        assert_output(
+            r#"
+            list <- RANGE(2, 4)
+            DISPLAY(list[2])
+            "#,
+            "3",
         );
     }
 }
