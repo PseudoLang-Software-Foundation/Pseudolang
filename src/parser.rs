@@ -155,7 +155,7 @@ impl Parser {
                 self.advance();
                 let try_block = self.parse_block(debug)?;
 
-                while let Some(Token::Newline) = self.peek() {
+                while matches!(self.peek(), Some(Token::Newline)) {
                     self.advance();
                 }
 
@@ -319,7 +319,7 @@ impl Parser {
             Some(Token::Import) => self.parse_import(debug),
             Some(Token::Return) => {
                 self.advance();
-                if let Some(Token::OpenParen) = self.peek() {
+                if matches!(self.peek(), Some(Token::OpenParen)) {
                     self.advance();
                     let expr = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseParen) {

@@ -153,7 +153,7 @@ fn evaluate_node(
                 if debug {
                     println!("Assigning {} = {:?}", name, val);
                 }
-                if let AstNode::FormattedString(_, _) = &**value {
+                if matches!(&**value, AstNode::FormattedString(_, _)) {
                     let output = value_to_string(&val);
                     env.borrow_mut().output.push_str(&output);
                     env.borrow_mut().output.push('\n');
@@ -241,7 +241,7 @@ fn evaluate_node(
                 env.borrow_mut().output.push('\n');
                 result
             } else {
-                println!("");
+                println!();
                 stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push('\n');
                 Value::Unit
