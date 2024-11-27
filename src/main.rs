@@ -1,29 +1,14 @@
 use std::fs;
 use std::io::Read;
 
+mod core;
 mod interpreter;
 mod lexer;
 mod parser;
 
-use lexer::Lexer;
+use core::*;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
-
-const HELP_MESSAGE: &str = r#"PseudoLang Usage:
-    fplc [OPTIONS] COMMAND [ARGS]
-
-COMMANDS:
-    run <input_file.psl>    Execute a PseudoLang program
-
-OPTIONS:
-    -h, --help       Display this help message
-    -v, --version    Display version information
-    -d, --debug      Enable debug output during execution
-
-Examples:
-    fplc run program.psl
-    fplc run --debug source.psl
-"#;
 
 #[derive(Debug)]
 struct Config {
@@ -44,10 +29,7 @@ fn parse_args() -> Result<Config, String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     if args.is_empty() {
-        return Err(format!(
-            "{}\n\nTip: Use -h or --help for detailed usage information.",
-            HELP_MESSAGE
-        ));
+        return Err(format!("{}\n{}", HELP_MESSAGE, USAGE_TIP));
     }
 
     let mut debug = false;
@@ -62,12 +44,7 @@ fn parse_args() -> Result<Config, String> {
                 "--debug" => debug = true,
                 "--help" => show_help = true,
                 "--version" => show_version = true,
-                _ => {
-                    return Err(format!(
-                        "Unknown option: {}\n\nTip: Use -h or --help for detailed usage information.",
-                        arg
-                    ));
-                }
+                _ => return Err(format_unknown_option_error(arg)),
             }
             indices_to_remove.push(index);
         } else if arg.starts_with('-') && arg.len() > 1 {
@@ -77,12 +54,7 @@ fn parse_args() -> Result<Config, String> {
                     'd' => debug = true,
                     'h' => show_help = true,
                     'v' => show_version = true,
-                    _ => {
-                        return Err(format!(
-                            "Unknown option: -{}\n\nTip: Use -h or --help for detailed usage information.",
-                            c
-                        ));
-                    }
+                    _ => return Err(format_unknown_option_error(&format!("-{}", c))),
                 }
             }
             indices_to_remove.push(index);
@@ -106,14 +78,11 @@ fn parse_args() -> Result<Config, String> {
     match args.get(0).map(String::as_str) {
         Some("run") => {
             if args.len() < 2 {
-                return Err("Missing required argument: input_file\n\nTip: Use -h or --help for detailed usage information.".to_string());
+                return Err(format_missing_input_error());
             }
             let input_file = args[1].clone();
             if !input_file.ends_with(".psl") {
-                return Err(format!(
-                    "Input file must have .psl extension, got: {}\n\nTip: Use -h or --help for detailed usage information.",
-                    input_file
-                ));
+                return Err(format_invalid_extension_error(&input_file));
             }
 
             Ok(Config {
@@ -124,64 +93,20 @@ fn parse_args() -> Result<Config, String> {
                 show_help,
             })
         }
-        Some(cmd) => Err(format!(
-            "Unknown command: {}\n\nTip: Use -h or --help for detailed usage information.",
-            cmd
-        )),
-        None => Err(
-            "No command provided\n\nTip: Use -h or --help for detailed usage information."
-                .to_string(),
-        ),
+        Some(cmd) => Err(format_unknown_command_error(cmd)),
+        None => Err(format_no_command_error()),
     }
-}
-
-fn process_file(
-    input_file: &str,
-    debug: bool,
-) -> Result<(Vec<lexer::Token>, parser::AstNode), String> {
-    let mut file = match fs::File::open(input_file) {
-        Ok(file) => file,
-        Err(error) => {
-            return Err(format!(
-                "Error opening file {}: {}\nPlease ensure the file exists and you have read permissions.",
-                input_file, error
-            ));
-        }
-    };
-
-    let mut source_code = String::new();
-    if let Err(error) = file.read_to_string(&mut source_code) {
-        return Err(format!("Error reading file {}: {}", input_file, error));
-    }
-
-    let mut lexer = Lexer::new(&source_code);
-    let tokens = lexer.tokenize();
-
-    if debug {
-        println!("\n=== Lexer Output ===");
-        println!("Tokens: {:?}", tokens);
-        println!("\n=== Parser Starting ===");
-    }
-
-    let ast = parser::parse(tokens.clone(), debug)?;
-
-    if debug {
-        println!("\n=== Parser Output ===");
-        println!("AST: {:#?}", ast);
-    }
-
-    Ok((tokens, ast))
 }
 
 fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
-    let (_, ast) = process_file(input_file, debug)?;
+    let mut file = fs::File::open(input_file)
+        .map_err(|e| format!("Error opening file {}: {}", input_file, e))?;
 
-    if debug {
-        println!("\n=== Starting Execution ===");
-        println!("Executing program...\n");
-    }
+    let mut source_code = String::new();
+    file.read_to_string(&mut source_code)
+        .map_err(|e| format!("Error reading file {}: {}", input_file, e))?;
 
-    interpreter::run(ast)?;
+    execute_code(&source_code, debug, false)?;
     Ok(())
 }
 

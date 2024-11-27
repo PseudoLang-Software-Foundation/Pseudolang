@@ -38,6 +38,8 @@ jobs:
         target:
           - x86_64-pc-windows-gnu
           - x86_64-unknown-linux-gnu
+          - wasm32-unknown-unknown
+          - wasm32-wasip1
     
     steps:
       - uses: actions/checkout@v3
@@ -51,10 +53,31 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Install Cross
+        if: matrix.target != 'wasm32-unknown-unknown' && matrix.target != 'wasm32-wasip1'
         run: cargo install cross
 
-      - name: Build Release
-        run: cross build --release --target ${{ matrix.target }}
+      - name: Install wasm-pack
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install wasm32-wasip1 target
+        if: matrix.target == 'wasm32-wasip1'
+        run: rustup target add wasm32-wasip1
+
+      - name: Build Native
+        if: matrix.target != 'wasm32-unknown-unknown' && matrix.target != 'wasm32-wasip1'
+        run: cross build --release --target ${{ matrix.target }} --features native
+
+      - name: Build WASM
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          wasm-pack build --target web --release -- --features wasm
+          mkdir -p release/wasm
+          cp pkg/* release/wasm/
+
+      - name: Build for WASI target
+        if: matrix.target == 'wasm32-wasip1'
+        run: cargo build --release --target wasm32-wasip1 --features wasi
 
       - name: Prepare Artifacts
         run: |
@@ -98,6 +121,22 @@ jobs:
           path: release/installer/pseudolang-setup-x64.exe
           retention-days: 7
           if-no-files-found: error
+
+      - name: Upload WASM Artifacts
+        if: matrix.target == 'wasm32-unknown-unknown'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-wasm
+          path: pkg/*
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload WASI artifact
+        if: matrix.target == 'wasm32-wasip1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fplc-wasi
+          path: target/wasm32-wasip1/release/fplc.wasm
 
   publish:
     name: Publish Release

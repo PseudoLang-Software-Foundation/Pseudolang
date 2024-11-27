@@ -2,7 +2,7 @@ use crate::parser::{AstNode, BinaryOperator, UnaryOperator};
 use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{self, stdout, Write};
+use std::io::{self, Write};
 use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
@@ -235,14 +235,10 @@ fn evaluate_node(
             let value = if let Some(expr) = expr {
                 let result = evaluate_node(expr, Rc::clone(&env), debug)?;
                 let output = value_to_string(&result);
-                println!("{}", output);
-                stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push_str(&output);
                 env.borrow_mut().output.push('\n');
                 result
             } else {
-                println!();
-                stdout().flush().map_err(|e| e.to_string())?;
                 env.borrow_mut().output.push('\n');
                 Value::Unit
             };
@@ -252,8 +248,6 @@ fn evaluate_node(
         AstNode::DisplayInline(expr) => {
             let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
-            print!("{}", output);
-            stdout().flush().map_err(|e| e.to_string())?;
             env.borrow_mut().output.push_str(&output);
             Ok(Value::Unit)
         }
@@ -261,7 +255,9 @@ fn evaluate_node(
         AstNode::Input(prompt) => {
             if let Some(prompt_expr) = prompt {
                 let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
-                print!("{}", value_to_string(&prompt_val));
+                env.borrow_mut()
+                    .output
+                    .push_str(&value_to_string(&prompt_val));
             }
             io::stdout().flush().map_err(|e| e.to_string())?;
             let mut input = String::new();

@@ -1,0 +1,16 @@
+
+[package]
+name = "pseudolang/fplc"
+version = "0.9.500"
+description = "A pseudolang interpreter written in Rust"
+license = "MIT"
+readme = "readme.md"
+
+[[module]]
+name = "fplc"
+source = "target/wasm32-wasip11/release/fplc.wasm"
+abi = "wasi"
+
+[[command]]
+name = "fplc"
+module = "fplc"
