@@ -1,7 +1,6 @@
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 use crate::core::execute_code_with_capture;
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-use std::fmt::Write;
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 use wasm_bindgen::prelude::*;
 

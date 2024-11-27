@@ -26,8 +26,9 @@ pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<Str
     Ok(output)
 }
 
+#[allow(dead_code)]
 pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, String> {
-    let mut output = String::new();
+    let mut output = String::default();
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize();
 
