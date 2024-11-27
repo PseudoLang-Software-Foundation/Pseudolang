@@ -3,13 +3,13 @@ use crate::core::execute_code;
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[no_mangle]
-pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize) -> u64 {
+pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize, debug: bool) -> u64 {
     let input = unsafe {
         let slice = std::slice::from_raw_parts(ptr, len);
         std::str::from_utf8_unchecked(slice)
     };
 
-    match execute_code(input, false, true) {
+    match execute_code(input, debug, true) {
         Ok(output) => {
             let bytes = output.into_bytes();
             let ptr = bytes.as_ptr() as u64;
@@ -26,9 +26,9 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[wasm_bindgen]
-pub fn run_pseudolang(input: &str) -> Result<String, JsValue> {
+pub fn run_pseudolang(input: &str, debug: bool) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
-    execute_code(input, false, true).map_err(|e| JsValue::from_str(&e))
+    execute_code(input, debug, true).map_err(|e| JsValue::from_str(&e))
 }
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]

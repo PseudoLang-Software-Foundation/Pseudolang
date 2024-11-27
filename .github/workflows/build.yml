@@ -71,15 +71,37 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
           cargo build --release --target wasm32-unknown-unknown --features wasm
-          mkdir -p release/wasm/raw
-          cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/raw/
+          mkdir -p release
+          cp target/wasm32-unknown-unknown/release/fplc.wasm release/fplc-raw.wasm
 
       - name: Build WASM (Bindgen)
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
           wasm-pack build --target web --release -- --features "wasm bindgen"
-          mkdir -p release/wasm/bindgen
-          cp pkg/* release/wasm/bindgen/
+          mkdir -p release/wasm-bindgen
+          cp pkg/fplc_bg.wasm release/wasm-bindgen/
+          cp pkg/fplc.js release/wasm-bindgen/
+          cp pkg/fplc.d.ts release/wasm-bindgen/
+          cp pkg/fplc_bg.wasm.d.ts release/wasm-bindgen/
+          cd release && zip -r wasm-bindgen.zip wasm-bindgen/
+
+      - name: Upload Raw WASM Artifact
+        if: matrix.target == 'wasm32-unknown-unknown'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-raw-wasm
+          path: release/fplc-raw.wasm
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload Bindgen WASM Artifact
+        if: matrix.target == 'wasm32-unknown-unknown'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-wasm-bindgen
+          path: release/wasm-bindgen.zip
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Build Native
         if: ${{ !contains(matrix.target, 'wasm') }}
@@ -198,6 +220,18 @@ jobs:
           name: pseudolang-wasm32-unknown-unknown
           path: artifacts/wasm
 
+      - name: Download Raw WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-raw-wasm
+          path: artifacts/wasm-raw
+
+      - name: Download Bindgen WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-wasm-bindgen
+          path: artifacts/wasm-bindgen
+
       - name: Prepare Release Files
         run: |
           mkdir -p release
@@ -205,8 +239,8 @@ jobs:
           cp artifacts/windows/pseudolang-setup-x64.exe release/ || true
           cp artifacts/linux/fplc-linux-x64 release/
           cp artifacts/wasi/wasi/fplc.wasm release/fplc-wasi.wasm || true
-          cp artifacts/wasm/wasm/raw/fplc.wasm release/fplc-raw.wasm || true
-          cp -r artifacts/wasm/wasm/bindgen/* release/bindgen/ || true
+          cp artifacts/wasm-raw/fplc-raw.wasm release/ || true
+          cp artifacts/wasm-bindgen/wasm-bindgen.zip release/ || true
           chmod +x release/fplc-linux-x64
 
       - name: Create Release and Upload Assets
@@ -225,4 +259,4 @@ jobs:
             release/pseudolang-setup-x64.exe
             release/fplc-wasi.wasm
             release/fplc-raw.wasm
-            release/bindgen/*
+            release/wasm-bindgen.zip
