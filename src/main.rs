@@ -102,7 +102,7 @@ fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
     let mut file = fs::File::open(input_file)
         .map_err(|e| format!("Error opening file {}: {}", input_file, e))?;
 
-    let mut source_code = String::new();
+    let mut source_code = String::default();
     file.read_to_string(&mut source_code)
         .map_err(|e| format!("Error reading file {}: {}", input_file, e))?;
 

@@ -53,19 +53,15 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Install Cross
-        if: matrix.target != 'wasm32-unknown-unknown' && matrix.target != 'wasm32-wasip1'
+        if: ${{ !contains(matrix.target, 'wasm') }}
         run: cargo install cross
 
       - name: Install wasm-pack
         if: matrix.target == 'wasm32-unknown-unknown'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Install wasm32-wasip1 target
-        if: matrix.target == 'wasm32-wasip1'
-        run: rustup target add wasm32-wasip1
-
       - name: Build Native
-        if: matrix.target != 'wasm32-unknown-unknown' && matrix.target != 'wasm32-wasip1'
+        if: ${{ !contains(matrix.target, 'wasm') }}
         run: cross build --release --target ${{ matrix.target }} --features native
 
       - name: Build WASM
@@ -75,11 +71,15 @@ jobs:
           mkdir -p release/wasm
           cp pkg/* release/wasm/
 
-      - name: Build for WASI target
+      - name: Build WASI
         if: matrix.target == 'wasm32-wasip1'
-        run: cargo build --release --target wasm32-wasip1 --features wasi
+        run: |
+          cargo build --release --target wasm32-wasip1 --features wasi
+          mkdir -p release/wasi
+          cp target/wasm32-wasip1/release/fplc.wasm release/wasi/
 
       - name: Prepare Artifacts
+        if: ${{ !contains(matrix.target, 'wasm') }}
         run: |
           mkdir -p release
           mkdir -p installer
@@ -87,7 +87,7 @@ jobs:
             cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
             cp release/fplc-x64.exe installer/fplc.exe
             cp LICENSE installer/
-          else
+          elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
             cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
             chmod +x release/fplc-linux-x64
           fi
@@ -131,13 +131,6 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload WASI artifact
-        if: matrix.target == 'wasm32-wasip1'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fplc-wasi
-          path: target/wasm32-wasip1/release/fplc.wasm
-
   publish:
     name: Publish Release
     needs: build
@@ -179,16 +172,26 @@ jobs:
           name: pseudolang-x86_64-unknown-linux-gnu
           path: artifacts/linux
 
+      - name: Download WASI Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-wasm32-wasip1
+          path: artifacts/wasi
+
       - name: Prepare Release Files
         run: |
           mkdir -p release
           cp artifacts/windows/fplc-x64.exe release/
           cp artifacts/windows/pseudolang-setup-x64.exe release/ || true
           cp artifacts/linux/fplc-linux-x64 release/
+          cp artifacts/wasi/wasi/fplc.wasm release/fplc.wasm || true
           chmod +x release/fplc-linux-x64
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ env.TAG_NAME }}
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: Pseudolang ${{ env.TAG_NAME }}
@@ -198,5 +201,4 @@ jobs:
             release/fplc-x64.exe
             release/fplc-linux-x64
             release/pseudolang-setup-x64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            release/fplc.wasm

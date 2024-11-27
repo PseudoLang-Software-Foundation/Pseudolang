@@ -3,7 +3,7 @@ use std::io::{self, Read};
 
 #[no_mangle]
 pub extern "C" fn _start() {
-    let mut input = String::new();
+    let mut input = String::default();
     if let Err(e) = io::stdin().read_to_string(&mut input) {
         eprintln!("Error reading input: {}", e);
         std::process::exit(1);
