@@ -4,7 +4,7 @@
 
 !define MUI_ICON "Pseudolang-Logo.ico"
 
-Name "PseudoLang Installer v0.9.500"
+Name "PseudoLang Installer v0.9.501"
 InstallDir "$PROGRAMFILES\PseudoLang\"
 OutFile "../release/installer/pseudolang-setup-x64.exe"
 BrandingText "(c) 2024 PseudoLang Software Foundation"
@@ -33,7 +33,7 @@ Section ""
     WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$INSTDIR;$R0"
     
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayName" "Pseudolang"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayVersion" "0.9.500"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayVersion" "0.9.501"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "Publisher" "Pseudolang Software Foundation"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayIcon" "$INSTDIR\Pseudolang-Logo.ico"
 

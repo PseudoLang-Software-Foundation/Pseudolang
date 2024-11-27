@@ -60,16 +60,30 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build Native
-        if: ${{ !contains(matrix.target, 'wasm') }}
-        run: cross build --release --target ${{ matrix.target }} --features native
-
       - name: Build WASM
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
-          wasm-pack build --target web --release -- --features wasm
+          cargo build --release --target wasm32-unknown-unknown --features wasm
           mkdir -p release/wasm
-          cp pkg/* release/wasm/
+          cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/
+
+      - name: Build WASM (Raw)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          cargo build --release --target wasm32-unknown-unknown --features wasm
+          mkdir -p release/wasm/raw
+          cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/raw/
+
+      - name: Build WASM (Bindgen)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          wasm-pack build --target web --release -- --features "wasm bindgen"
+          mkdir -p release/wasm/bindgen
+          cp pkg/* release/wasm/bindgen/
+
+      - name: Build Native
+        if: ${{ !contains(matrix.target, 'wasm') }}
+        run: cross build --release --target ${{ matrix.target }} --features native
 
       - name: Build WASI
         if: matrix.target == 'wasm32-wasip1'
@@ -178,13 +192,21 @@ jobs:
           name: pseudolang-wasm32-wasip1
           path: artifacts/wasi
 
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-wasm32-unknown-unknown
+          path: artifacts/wasm
+
       - name: Prepare Release Files
         run: |
           mkdir -p release
           cp artifacts/windows/fplc-x64.exe release/
           cp artifacts/windows/pseudolang-setup-x64.exe release/ || true
           cp artifacts/linux/fplc-linux-x64 release/
-          cp artifacts/wasi/wasi/fplc.wasm release/fplc.wasm || true
+          cp artifacts/wasi/wasi/fplc.wasm release/fplc-wasi.wasm || true
+          cp artifacts/wasm/wasm/raw/fplc.wasm release/fplc-raw.wasm || true
+          cp -r artifacts/wasm/wasm/bindgen/* release/bindgen/ || true
           chmod +x release/fplc-linux-x64
 
       - name: Create Release and Upload Assets
@@ -201,4 +223,6 @@ jobs:
             release/fplc-x64.exe
             release/fplc-linux-x64
             release/pseudolang-setup-x64.exe
-            release/fplc.wasm
+            release/fplc-wasi.wasm
+            release/fplc-raw.wasm
+            release/bindgen/*
