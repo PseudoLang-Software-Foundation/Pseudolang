@@ -1,4 +1,5 @@
 use crate::{interpreter, lexer::Lexer, parser};
+use std::fmt::Write;
 
 pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<String, String> {
     let mut lexer = Lexer::new(input);
@@ -22,6 +23,31 @@ pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<Str
     if !return_output && !output.is_empty() {
         print!("{}", output);
     }
+    Ok(output)
+}
+
+pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, String> {
+    let mut output = String::new();
+    let mut lexer = Lexer::new(input);
+    let tokens = lexer.tokenize();
+
+    if debug {
+        writeln!(output, "\n=== Lexer Output ===").unwrap();
+        writeln!(output, "Tokens: {:?}", tokens).unwrap();
+        writeln!(output, "\n=== Parser Starting ===").unwrap();
+    }
+
+    let ast = parser::parse(tokens, false)?;
+
+    if debug {
+        writeln!(output, "\n=== Parser Output ===").unwrap();
+        writeln!(output, "AST: {:#?}", ast).unwrap();
+        writeln!(output, "\n=== Starting Execution ===").unwrap();
+    }
+
+    let program_output = interpreter::run(ast)?;
+    writeln!(output, "{}", program_output).unwrap();
+
     Ok(output)
 }
 

@@ -1,7 +1,27 @@
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-use crate::core::execute_code;
+use crate::core::execute_code_with_capture;
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 use std::fmt::Write;
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+use wasm_bindgen::prelude::*;
+
+include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+#[no_mangle]
+pub extern "C" fn get_version_raw() -> u64 {
+    let version = VERSION.as_bytes();
+    let ptr = version.as_ptr() as u64;
+    let len = version.len() as u64;
+    std::mem::forget(version);
+    (ptr << 32) | len
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+#[wasm_bindgen]
+pub fn get_version() -> String {
+    VERSION.to_string()
+}
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[no_mangle]
@@ -11,7 +31,7 @@ pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize, debug: bool) ->
         std::str::from_utf8_unchecked(slice)
     };
 
-    match run_with_debug(input, debug) {
+    match execute_code_with_capture(input, debug) {
         Ok(output) => {
             let bytes = output.into_bytes();
             let ptr = bytes.as_ptr() as u64;
@@ -24,39 +44,10 @@ pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize, debug: bool) ->
 }
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-use wasm_bindgen::prelude::*;
-
-#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[wasm_bindgen]
 pub fn run_pseudolang(input: &str, debug: bool) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
-    run_with_debug(input, debug).map_err(|e| JsValue::from_str(&e))
-}
-
-#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-fn run_with_debug(input: &str, debug: bool) -> Result<String, String> {
-    let mut output = String::new();
-    let mut lexer = crate::lexer::Lexer::new(input);
-    let tokens = lexer.tokenize();
-
-    if debug {
-        writeln!(output, "\n=== Lexer Output ===").unwrap();
-        writeln!(output, "Tokens: {:?}", tokens).unwrap();
-        writeln!(output, "\n=== Parser Starting ===").unwrap();
-    }
-
-    let ast = crate::parser::parse(tokens, false)?;
-
-    if debug {
-        writeln!(output, "\n=== Parser Output ===").unwrap();
-        writeln!(output, "AST: {:#?}", ast).unwrap();
-        writeln!(output, "\n=== Starting Execution ===").unwrap();
-    }
-
-    let program_output = crate::interpreter::run(ast)?;
-    writeln!(output, "{}", program_output).unwrap();
-
-    Ok(output)
+    execute_code_with_capture(input, debug).map_err(|e| JsValue::from_str(&e))
 }
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
