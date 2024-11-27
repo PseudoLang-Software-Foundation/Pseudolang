@@ -5,8 +5,9 @@ set -e
 chmod +x build_release.sh
 
 mkdir -p release/installer
-mkdir -p release/wasm
 mkdir -p release/wasi
+mkdir -p release/wasm/raw
+mkdir -p release/wasm/bindgen
 
 echo "Building native targets..."
 
@@ -25,13 +26,11 @@ rustup target add wasm32-unknown-unknown
 
 echo "Building raw WASM..."
 cargo build --release --target wasm32-unknown-unknown --features wasm
-mkdir -p release/wasm/raw
 cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/raw/
 
 echo "Building WASM with bindgen..."
 if command -v wasm-pack >/dev/null 2>&1; then
     wasm-pack build --target web --release -- --features "wasm bindgen"
-    mkdir -p release/wasm/bindgen
     cp pkg/* release/wasm/bindgen/
 else
     echo "wasm-pack not found, skipping bindgen WASM build"

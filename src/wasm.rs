@@ -1,5 +1,7 @@
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 use crate::core::execute_code;
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+use std::fmt::Write;
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[no_mangle]
@@ -9,7 +11,7 @@ pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize, debug: bool) ->
         std::str::from_utf8_unchecked(slice)
     };
 
-    match execute_code(input, debug, true) {
+    match run_with_debug(input, debug) {
         Ok(output) => {
             let bytes = output.into_bytes();
             let ptr = bytes.as_ptr() as u64;
@@ -28,7 +30,33 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn run_pseudolang(input: &str, debug: bool) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
-    execute_code(input, debug, true).map_err(|e| JsValue::from_str(&e))
+    run_with_debug(input, debug).map_err(|e| JsValue::from_str(&e))
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+fn run_with_debug(input: &str, debug: bool) -> Result<String, String> {
+    let mut output = String::new();
+    let mut lexer = crate::lexer::Lexer::new(input);
+    let tokens = lexer.tokenize();
+
+    if debug {
+        writeln!(output, "\n=== Lexer Output ===").unwrap();
+        writeln!(output, "Tokens: {:?}", tokens).unwrap();
+        writeln!(output, "\n=== Parser Starting ===").unwrap();
+    }
+
+    let ast = crate::parser::parse(tokens, false)?;
+
+    if debug {
+        writeln!(output, "\n=== Parser Output ===").unwrap();
+        writeln!(output, "AST: {:#?}", ast).unwrap();
+        writeln!(output, "\n=== Starting Execution ===").unwrap();
+    }
+
+    let program_output = crate::interpreter::run(ast)?;
+    writeln!(output, "{}", program_output).unwrap();
+
+    Ok(output)
 }
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]

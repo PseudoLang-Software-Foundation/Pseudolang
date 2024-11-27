@@ -112,7 +112,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "fplc"
-version = "0.9.502"
+version = "0.9.503"
 dependencies = [
  "chrono",
  "chrono-tz",
