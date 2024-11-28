@@ -83,6 +83,9 @@ pub enum Token {
     Sort,
     Try,
     Catch,
+
+    Null,
+    NaN,
 }
 
 pub struct Lexer<'a> {
@@ -322,22 +325,30 @@ impl<'a> Lexer<'a> {
             }
 
             'N' => {
-                if self.pos + 2 <= self.input.len()
-                    && &self.input[self.pos - 1..self.pos + 2] == "NOT"
-                {
-                    self.chars.next();
-                    self.chars.next();
-                    self.pos += 2;
-
-                    if self.chars.peek() == Some(&'=') {
+                let mut identifier = String::from('N');
+                while let Some(&c) = self.chars.peek() {
+                    if c.is_alphanumeric() || c == '_' {
+                        identifier.push(c);
                         self.chars.next();
                         self.pos += 1;
-                        Some(Token::NotEqual)
                     } else {
-                        Some(Token::Not)
+                        break;
                     }
-                } else {
-                    Some(Token::Identifier("N".to_string()))
+                }
+
+                match identifier.as_str() {
+                    "NULL" => Some(Token::Null),
+                    "NaN" => Some(Token::NaN),
+                    "NOT" => {
+                        if self.chars.peek() == Some(&'=') {
+                            self.chars.next();
+                            self.pos += 1;
+                            Some(Token::NotEqual)
+                        } else {
+                            Some(Token::Not)
+                        }
+                    }
+                    _ => Some(Token::Identifier(identifier)),
                 }
             }
 
@@ -354,6 +365,8 @@ impl<'a> Lexer<'a> {
                 }
 
                 match identifier.as_str() {
+                    "NULL" => Some(Token::Null),
+                    "NaN" => Some(Token::NaN),
                     "MOD" => Some(Token::Modulo),
                     "DISPLAY" => {
                         while let Some(&c) = self.chars.peek() {

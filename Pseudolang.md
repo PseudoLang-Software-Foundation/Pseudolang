@@ -300,10 +300,9 @@ PROCEDURE procName(a, b)
 Defines procName as a procedure that takes zero or more arguments. The procedure contains statements. The procedure procName can be called using the following notation, where arg1 is assigned to parameter1, arg2 is assigned to parameter2 and so on.
 `procName(arg1, arg2)`
 
-`RETURN(a)`
+`RETURN (a)` or `RETURN` or `RETURN ()`
 
-Returns the flow of control to the point where the procedure was
-called and returns the value of a. Can be used as a value itself.
+Returns the flow of control to the point where the procedure was called without returning a value. When a procedure executes a value-less return or reaches its end without an explicit return value, displaying the procedure's result will show nothing.
 
 `SUBSTRING("abcd", start, end)`
 Returns a string of characters from index `start` to index `end` of the given string
@@ -356,6 +355,14 @@ String (64 bit)
 `TRUE` or `FALSE`
 
 Boolean
+
+`NULL`
+
+A special value representing the absence of a value.
+
+`NaN`
+
+A special numeric value representing an undefined or unrepresentable value. Any arithmetic operation involving NaN results in NaN. Comparing NaN with any value (including another NaN) returns false, except for NaN NOT= NaN which returns true.
 
 ## Methods
 

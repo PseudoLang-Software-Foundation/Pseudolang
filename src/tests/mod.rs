@@ -534,6 +534,18 @@ mod test {
             "#,
             "Hello World!",
         );
+
+        assert_output(
+            r#"
+            x <- 5
+            y <- 10
+            str1 <- "Hello, "
+            str2 <- "world!"
+
+            str <- f"{str1 + str2} {x} {y} {x + y}"
+            "#,
+            "Hello, world! 5 10 15",
+        )
     }
 
     #[test]
@@ -2232,6 +2244,11 @@ DISPLAY(arr)"#,
         assert_output("DISPLAY(RANGE(1))", "[1]");
         assert_output("DISPLAY(RANGE(1, 1))", "[1]");
 
+        assert!(
+            run_test("DISPLAY(RANGE(5, 2))").is_err(),
+            "Expected error for invalid range"
+        );
+
         assert_output(
             r#"
             list <- RANGE(3)
@@ -2246,6 +2263,162 @@ DISPLAY(arr)"#,
             DISPLAY(list[2])
             "#,
             "3",
+        );
+    }
+
+    #[test]
+    fn test_void_returns() {
+        assert_output(
+            r#"
+            PROCEDURE printAndReturn(x) {
+                DISPLAY(x)
+                RETURN()
+            }
+            DISPLAY(printAndReturn(42))
+            "#,
+            "42",
+        );
+
+        assert_output(
+            r#"
+            PROCEDURE early_exit(x) {
+                IF (x < 0) {
+                    RETURN
+                }
+                DISPLAY(x)
+            }
+            early_exit(-1)
+            early_exit(5)
+            "#,
+            "5",
+        );
+
+        assert_output(
+            r#"
+            PROCEDURE getEqual(arr, num) {
+                IF (LENGTH(arr) NOT= num) {
+                    DISPLAY("Not equal")
+                    RETURN
+                } ELSE {
+                    DISPLAY("Equal")
+                    RETURN
+                }
+            }
+            arr <- [1, 2, 3]
+            num <- 3
+            getEqual(arr, num)
+            "#,
+            "Equal",
+        );
+
+        assert_output(
+            r#"
+            PROCEDURE getEqual(arr, num) {
+                IF (LENGTH(arr) NOT= num) {
+                    DISPLAY("Not equal")
+                    RETURN()
+                }
+                DISPLAY("Equal")
+                RETURN()
+            }
+            arr <- [1, 2]
+            num <- 3
+            getEqual(arr, num)
+            "#,
+            "Not equal",
+        );
+    }
+
+    #[test]
+    fn test_optional_parentheses() {
+        assert_output("IF TRUE { DISPLAY(42) }", "42");
+        assert_output("IF FALSE { DISPLAY(42) } ELSE { DISPLAY(24) }", "24");
+
+        assert_output(
+            r#"
+            IF TRUE {
+                IF FALSE {
+                    DISPLAY(1)
+                } ELSE {
+                    DISPLAY(2)
+                }
+            }
+        "#,
+            "2",
+        );
+
+        assert_output(
+            r#"
+            x <- 0
+            REPEAT UNTIL x = 3 {
+                x <- x + 1
+            }
+            DISPLAY(x)
+            "#,
+            "3",
+        );
+
+        assert_output(
+            r#"
+            IF (TRUE) { DISPLAY(1) }
+            IF TRUE { DISPLAY(2) }
+            IF FALSE { DISPLAY(3) } ELSE IF TRUE { DISPLAY(4) }
+            IF (FALSE) { DISPLAY(5) } ELSE IF (TRUE) { DISPLAY(6) }
+        "#,
+            "1\n2\n4\n6",
+        );
+    }
+
+    #[test]
+    fn test_null_and_nan() {
+        assert_output("DISPLAY(NULL)", "NULL");
+        assert_output("DISPLAY(NaN)", "NaN");
+
+        assert_output(
+            r#"
+            x <- NULL
+            y <- NULL
+            DISPLAY(x = y)
+            DISPLAY(x NOT= y)
+            "#,
+            "true\nfalse",
+        );
+
+        assert_output(
+            r#"
+            x <- NaN
+            y <- NaN
+            DISPLAY(x = y)
+            DISPLAY(x NOT= y)
+            "#,
+            "false\ntrue",
+        );
+
+        assert_output(
+            r#"
+            x <- NULL
+            y <- 42
+            DISPLAY(x = y)
+            "#,
+            "false",
+        );
+
+        assert_output(
+            r#"
+            x <- NaN
+            y <- 42
+            DISPLAY(x = y)
+            "#,
+            "false",
+        );
+
+        assert_output(
+            r#"
+            x <- NaN
+            y <- x + 5
+            DISPLAY(y)
+            "#,
+            "NaN",
         );
     }
 }

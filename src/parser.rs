@@ -8,6 +8,8 @@ pub enum AstNode {
     String(String),
     Boolean(bool),
     List(Vec<AstNode>),
+    Null,
+    NaN,
 
     Identifier(String),
     Assignment(Box<AstNode>, Box<AstNode>),
@@ -321,14 +323,18 @@ impl Parser {
                 self.advance();
                 if matches!(self.peek(), Some(Token::OpenParen)) {
                     self.advance();
-                    let expr = self.parse_expression(debug)?;
-                    if !self.match_token(&Token::CloseParen) {
-                        return Err("Expected ')' after return expression".to_string());
+                    if matches!(self.peek(), Some(Token::CloseParen)) {
+                        self.advance();
+                        Ok(AstNode::Return(Box::new(AstNode::Block(vec![]))))
+                    } else {
+                        let expr = self.parse_expression(debug)?;
+                        if !self.match_token(&Token::CloseParen) {
+                            return Err("Expected ')' after return expression".to_string());
+                        }
+                        Ok(AstNode::Return(Box::new(expr)))
                     }
-                    Ok(AstNode::Return(Box::new(expr)))
                 } else {
-                    let expr = self.parse_expression(debug)?;
-                    Ok(AstNode::Return(Box::new(expr)))
+                    Ok(AstNode::Return(Box::new(AstNode::Block(vec![]))))
                 }
             }
             Some(Token::Input) => {
@@ -683,18 +689,9 @@ impl Parser {
                 Some(Token::Float(f)) => Ok(AstNode::Float(f)),
                 Some(Token::String(s)) => Ok(AstNode::String(s)),
                 Some(Token::RawString(s)) => Ok(AstNode::RawString(s)),
-                Some(Token::FormattedString(s, vars)) => {
-                    let mut expressions = Vec::new();
-                    for var in vars {
-                        let mut var_lexer = Lexer::new(&var);
-                        let var_tokens = var_lexer.tokenize();
-                        let mut var_parser = Parser::new(var_tokens);
-                        let expr = var_parser.parse_expression(debug)?;
-                        expressions.push(expr);
-                    }
-                    Ok(AstNode::FormattedString(s, expressions))
-                }
                 Some(Token::Boolean(b)) => Ok(AstNode::Boolean(b)),
+                Some(Token::Null) => Ok(AstNode::Null),
+                Some(Token::NaN) => Ok(AstNode::NaN),
                 Some(Token::Identifier(name)) => Ok(AstNode::Identifier(name)),
                 Some(Token::OpenParen) => {
                     let expr = self.parse_expression(debug)?;
@@ -936,13 +933,15 @@ impl Parser {
 
     fn parse_if(&mut self, debug: bool) -> Result<AstNode, String> {
         self.advance();
-        if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after IF".to_string());
-        }
-        let condition = self.parse_expression(debug)?;
-        if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')' after condition".to_string());
-        }
+        let condition = if self.match_token(&Token::OpenParen) {
+            let expr = self.parse_expression(debug)?;
+            if !self.match_token(&Token::CloseParen) {
+                return Err("Expected ')' after condition".to_string());
+            }
+            expr
+        } else {
+            self.parse_expression(debug)?
+        };
 
         let then_branch = self.parse_block(debug)?;
 
@@ -979,13 +978,15 @@ impl Parser {
 
         if self.peek() == Some(&Token::Until) {
             self.advance();
-            if !self.match_token(&Token::OpenParen) {
-                return Err("Expected '(' after REPEAT UNTIL".to_string());
-            }
-            let condition = self.parse_expression(debug)?;
-            if !self.match_token(&Token::CloseParen) {
-                return Err("Expected ')' after condition".to_string());
-            }
+            let condition = if self.match_token(&Token::OpenParen) {
+                let expr = self.parse_expression(debug)?;
+                if !self.match_token(&Token::CloseParen) {
+                    return Err("Expected ')' after condition".to_string());
+                }
+                expr
+            } else {
+                self.parse_expression(debug)?
+            };
 
             while let Some(Token::Newline) = self.peek() {
                 self.advance();

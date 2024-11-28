@@ -16,6 +16,8 @@ enum Value {
     Boolean(bool),
     List(Vec<Value>),
     Unit,
+    Null,
+    NaN,
 }
 
 #[derive(Clone)]
@@ -134,6 +136,8 @@ fn evaluate_node(
         AstNode::Float(f) => Ok(Value::Float(*f)),
         AstNode::String(s) => Ok(Value::String(s.clone())),
         AstNode::Boolean(b) => Ok(Value::Boolean(*b)),
+        AstNode::Null => Ok(Value::Null),
+        AstNode::NaN => Ok(Value::NaN),
         AstNode::List(elements) => {
             let mut values = Vec::new();
             for elem in elements {
@@ -1313,6 +1317,16 @@ fn evaluate_node(
 
 fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Result<Value, String> {
     match (left, op, right) {
+        (Value::NaN, BinaryOperator::Eq, _) => Ok(Value::Boolean(false)),
+        (_, BinaryOperator::Eq, Value::NaN) => Ok(Value::Boolean(false)),
+        (Value::NaN, BinaryOperator::NotEq, _) => Ok(Value::Boolean(true)),
+        (_, BinaryOperator::NotEq, Value::NaN) => Ok(Value::Boolean(true)),
+        (Value::NaN, _, _) | (_, _, Value::NaN) => Ok(Value::NaN),
+
+        (Value::Null, BinaryOperator::Eq, Value::Null) => Ok(Value::Boolean(true)),
+        (Value::Null, BinaryOperator::NotEq, Value::Null) => Ok(Value::Boolean(false)),
+        (Value::Null, _, _) | (_, _, Value::Null) => Ok(Value::Boolean(false)),
+
         (Value::Integer(a), BinaryOperator::Add, Value::Integer(b)) => Ok(Value::Integer(a + b)),
         (Value::Integer(a), BinaryOperator::Sub, Value::Integer(b)) => Ok(Value::Integer(a - b)),
         (Value::Integer(a), BinaryOperator::Mul, Value::Integer(b)) => Ok(Value::Integer(a * b)),
@@ -1476,6 +1490,8 @@ fn value_to_string(value: &Value) -> String {
             format!("[{}]", elements_str.join(", "))
         }
         Value::Unit => "".to_string(),
+        Value::Null => "NULL".to_string(),
+        Value::NaN => "NaN".to_string(),
     }
 }
 
