@@ -1,5 +1,5 @@
 <div align="center">
-  <h1><a href="https://pseudo-lang.org/">Pseudolang</a></h1>
+  <h1><a href="https://pseudo-lang.org/">Psedolang</a></h1>
 </div>
 
 <p align="center">
