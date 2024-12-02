@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The bleeding edge of pseudolang is what recieves updates, therefore only new releases wiill have patches.
+The bleeding edge of pseudolang is what recieves updates, therefore only new releases will have patches.
 
 ## Reporting a Vulnerability
 
