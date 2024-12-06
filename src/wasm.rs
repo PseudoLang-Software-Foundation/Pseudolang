@@ -61,7 +61,7 @@ pub fn get_version_wasm() -> String {
 #[allow(dead_code)]
 #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
 pub fn main() {
-    print!("PseudoLang version {}\n", VERSION);
+    println!("PseudoLang version {}", VERSION);
     io::stdout().flush().unwrap();
 
     let mut input = String::default();

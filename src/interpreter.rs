@@ -243,7 +243,7 @@ fn evaluate_node(
                     .name()
                     .map_or(false, |name| name.starts_with("test"))
                 {
-                    print!("{}\n", output);
+                    println!("{}", output);
                     io::stdout().flush().unwrap();
                 }
                 env.borrow_mut().output.push_str(&output);
@@ -276,7 +276,7 @@ fn evaluate_node(
         }
 
         AstNode::Input(prompt) => {
-            let mut input_str = String::new();
+            let mut input_str = String::default();
 
             if let Some(prompt_expr) = prompt {
                 let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
