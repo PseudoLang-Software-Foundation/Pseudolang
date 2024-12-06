@@ -360,9 +360,9 @@ Boolean
 
 A special value representing the absence of a value.
 
-`NaN`
+`NAN`
 
-A special numeric value representing an undefined or unrepresentable value. Any arithmetic operation involving NaN results in NaN. Comparing NaN with any value (including another NaN) returns false, except for NaN NOT= NaN which returns true.
+A special numeric value representing an undefined or unrepresentable value. Any arithmetic operation involving NAN results in NAN. Comparing NAN with any value (including another NAN) returns false, except for NAN NOT= NAN which returns true.
 
 ## Methods
 

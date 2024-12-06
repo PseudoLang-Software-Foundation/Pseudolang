@@ -1,6 +1,8 @@
 use crate::{interpreter, lexer::Lexer, parser};
 use std::fmt::Write;
 
+include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
 pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<String, String> {
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize();
@@ -20,8 +22,8 @@ pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<Str
     }
 
     let output = interpreter::run(ast)?;
-    if !return_output && !output.is_empty() {
-        print!("{}", output);
+    if !return_output {
+        // placeholder for now
     }
     Ok(output)
 }
@@ -101,4 +103,8 @@ pub fn format_invalid_extension_error(file: &str) -> String {
         INVALID_EXTENSION_ERROR.replace("{}", file),
         USAGE_TIP
     )
+}
+
+pub fn get_version() -> String {
+    VERSION.to_string()
 }

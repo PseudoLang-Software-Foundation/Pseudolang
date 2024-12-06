@@ -9,14 +9,14 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.510-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.511-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
 
 Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by College Board's Pseudocode.
 
-This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI Package, Raw WASM).
+This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI Package, Raw WASM, WASM Bindgen).
 
 ## Releases
 

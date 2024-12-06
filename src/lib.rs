@@ -4,7 +4,5 @@ pub mod lexer;
 pub mod parser;
 #[cfg(test)]
 mod tests;
-#[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-pub mod wasi;
-#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+#[cfg(target_arch = "wasm32")]
 pub mod wasm;

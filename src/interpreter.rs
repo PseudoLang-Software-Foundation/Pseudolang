@@ -236,39 +236,66 @@ fn evaluate_node(
         }
 
         AstNode::Display(expr) => {
-            let value = if let Some(expr) = expr {
+            if let Some(expr) = expr {
                 let result = evaluate_node(expr, Rc::clone(&env), debug)?;
                 let output = value_to_string(&result);
+                if !std::thread::current()
+                    .name()
+                    .map_or(false, |name| name.starts_with("test"))
+                {
+                    print!("{}\n", output);
+                    io::stdout().flush().unwrap();
+                }
                 env.borrow_mut().output.push_str(&output);
                 env.borrow_mut().output.push('\n');
-                result
+                Ok(result)
             } else {
+                if !std::thread::current()
+                    .name()
+                    .map_or(false, |name| name.starts_with("test"))
+                {
+                    println!();
+                }
                 env.borrow_mut().output.push('\n');
-                Value::Unit
-            };
-            Ok(value)
+                Ok(Value::Unit)
+            }
         }
 
         AstNode::DisplayInline(expr) => {
             let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
+            if !std::thread::current()
+                .name()
+                .map_or(false, |name| name.starts_with("test"))
+            {
+                print!("{}", output);
+                io::stdout().flush().unwrap();
+            }
             env.borrow_mut().output.push_str(&output);
             Ok(Value::Unit)
         }
 
         AstNode::Input(prompt) => {
+            let mut input_str = String::new();
+
             if let Some(prompt_expr) = prompt {
                 let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
-                env.borrow_mut()
-                    .output
-                    .push_str(&value_to_string(&prompt_val));
+                let prompt_str = value_to_string(&prompt_val);
+                print!("{}", prompt_str);
+                io::stdout().flush().unwrap();
             }
-            io::stdout().flush().map_err(|e| e.to_string())?;
-            let mut input = String::new();
+
             io::stdin()
-                .read_line(&mut input)
+                .read_line(&mut input_str)
                 .map_err(|e| e.to_string())?;
-            Ok(Value::String(input.trim().to_string()))
+            let input = input_str.trim().to_string();
+
+            if prompt.is_none() {
+                env.borrow_mut().output.push_str(&input);
+                env.borrow_mut().output.push('\n');
+            }
+
+            Ok(Value::String(input))
         }
 
         AstNode::ProcedureDecl(name, params, body) => {
@@ -288,6 +315,7 @@ fn evaluate_node(
                     if args.len() != 1 {
                         return Err("SLEEP requires one argument".to_string());
                     }
+                    io::stdout().flush().unwrap();
                     let seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     match seconds {
                         Value::Integer(n) => {
@@ -1491,7 +1519,7 @@ fn value_to_string(value: &Value) -> String {
         }
         Value::Unit => "".to_string(),
         Value::Null => "NULL".to_string(),
-        Value::NaN => "NaN".to_string(),
+        Value::NaN => "NAN".to_string(),
     }
 }
 

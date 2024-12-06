@@ -338,7 +338,7 @@ impl<'a> Lexer<'a> {
 
                 match identifier.as_str() {
                     "NULL" => Some(Token::Null),
-                    "NaN" => Some(Token::NaN),
+                    "NAN" => Some(Token::NaN),
                     "NOT" => {
                         if self.chars.peek() == Some(&'=') {
                             self.chars.next();
@@ -366,7 +366,7 @@ impl<'a> Lexer<'a> {
 
                 match identifier.as_str() {
                     "NULL" => Some(Token::Null),
-                    "NaN" => Some(Token::NaN),
+                    "NAN" => Some(Token::NaN),
                     "MOD" => Some(Token::Modulo),
                     "DISPLAY" => {
                         while let Some(&c) = self.chars.peek() {

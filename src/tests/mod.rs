@@ -8,12 +8,13 @@ mod test {
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize();
         let ast = parser::parse(tokens, false)?;
-        interpreter::run(ast)
+        let output = interpreter::run(ast)?;
+        Ok(output.trim_end().to_string())
     }
 
     fn assert_output(input: &str, expected: &str) {
         match run_test(input) {
-            Ok(output) => assert_eq!(output.trim(), expected),
+            Ok(output) => assert_eq!(output, expected),
             Err(e) => panic!("Test failed for input '{}': {}", input, e),
         }
     }
@@ -28,11 +29,25 @@ mod test {
         assert_output("DISPLAY(-42)", "-42");
         assert_output("DISPLAY(FALSE)", "false");
         assert_output("DISPLAY([])", "[]");
+        assert_output(r#"DISPLAYINLINE("3")"#, "3");
+
+        assert_output("DISPLAYINLINE(\"Hello\")", "Hello");
+
         assert_output(
             r#"
-                    DISPLAYINLINE("Hello, ")
-                    DISPLAYINLINE("World!")"#,
-            "Hello, World!",
+            DISPLAYINLINE("A")
+            DISPLAYINLINE("B")
+            DISPLAYINLINE("C")"#,
+            "ABC",
+        );
+
+        assert_output(
+            r#"
+            DISPLAY("First")
+            DISPLAYINLINE("Hello ")
+            DISPLAYINLINE("World")
+            DISPLAY("\nLast")"#,
+            "First\nHello World\nLast",
         );
     }
 
@@ -2372,7 +2387,7 @@ DISPLAY(arr)"#,
     #[test]
     fn test_null_and_nan() {
         assert_output("DISPLAY(NULL)", "NULL");
-        assert_output("DISPLAY(NaN)", "NaN");
+        assert_output("DISPLAY(NAN)", "NAN");
 
         assert_output(
             r#"
@@ -2386,8 +2401,8 @@ DISPLAY(arr)"#,
 
         assert_output(
             r#"
-            x <- NaN
-            y <- NaN
+            x <- NAN
+            y <- NAN
             DISPLAY(x = y)
             DISPLAY(x NOT= y)
             "#,
@@ -2405,7 +2420,7 @@ DISPLAY(arr)"#,
 
         assert_output(
             r#"
-            x <- NaN
+            x <- NAN
             y <- 42
             DISPLAY(x = y)
             "#,
@@ -2414,11 +2429,11 @@ DISPLAY(arr)"#,
 
         assert_output(
             r#"
-            x <- NaN
+            x <- NAN
             y <- x + 5
             DISPLAY(y)
             "#,
-            "NaN",
+            "NAN",
         );
     }
 }

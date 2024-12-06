@@ -5,6 +5,8 @@ mod core;
 mod interpreter;
 mod lexer;
 mod parser;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
 
 use core::*;
 
@@ -106,8 +108,10 @@ fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
     file.read_to_string(&mut source_code)
         .map_err(|e| format!("Error reading file {}: {}", input_file, e))?;
 
-    execute_code(&source_code, debug, false)?;
-    Ok(())
+    match execute_code(&source_code, debug, false) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if config.show_version {
-        println!("PseudoLang version {}", VERSION);
+        println!("PseudoLang version {}", get_version());
         return Ok(());
     }
 
@@ -133,14 +137,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n=== Debug Mode Enabled ===\n");
     }
 
-    let result = match config.command {
-        Command::Run => run_program(&config.input_file, config.debug),
-        Command::None => Ok(()),
-    };
-
-    if let Err(error) = result {
-        eprintln!("Error: {}", error);
-        std::process::exit(1);
+    if let Command::Run = config.command {
+        if let Err(error) = run_program(&config.input_file, config.debug) {
+            eprintln!("Error: {}", error);
+            std::process::exit(1);
+        }
     }
 
     Ok(())
