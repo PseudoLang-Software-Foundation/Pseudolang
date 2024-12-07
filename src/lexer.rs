@@ -86,6 +86,7 @@ pub enum Token {
 
     Null,
     NaN,
+    Eval,
 }
 
 pub struct Lexer<'a> {
@@ -432,6 +433,7 @@ impl<'a> Lexer<'a> {
                     "SORT" => Some(Token::Sort),
                     "TRY" => Some(Token::Try),
                     "CATCH" => Some(Token::Catch),
+                    "EVAL" => Some(Token::Eval),
                     _ => Some(Token::Identifier(identifier)),
                 }
             }

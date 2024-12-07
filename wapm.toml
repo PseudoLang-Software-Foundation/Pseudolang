@@ -1,7 +1,7 @@
 
 [package]
 name = "pseudolang/fplc"
-version = "0.9.512"
+version = "0.9.513"
 description = "A pseudolang interpreter written in Rust"
 license = "MIT"
 readme = "readme.md"

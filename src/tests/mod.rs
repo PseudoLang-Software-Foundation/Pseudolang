@@ -2436,4 +2436,47 @@ DISPLAY(arr)"#,
             "NAN",
         );
     }
+
+    #[test]
+    fn test_eval() {
+        assert_output(r#"DISPLAY(EVAL("1 + 2"))"#, "3");
+        assert_output(r#"DISPLAY(EVAL("2 * (3 + 4)"))"#, "14");
+        assert_output(r#"DISPLAY(EVAL("10 / 2"))"#, "5");
+        assert_output(r#"DISPLAY(EVAL("7 MOD 3"))"#, "1");
+
+        assert_output(
+            r#"
+            x <- 5
+            DISPLAY(EVAL("x * 2"))
+            DISPLAY(EVAL("x * (x + 1)"))
+            "#,
+            "10\n30",
+        );
+
+        assert_output(
+            r#"
+            nums <- [1, 3, 5]
+            DISPLAY(EVAL("nums[1] + nums[2]"))
+            "#,
+            "4",
+        );
+
+        assert_output(
+            r#"
+            x <- 10
+            y <- 20
+            DISPLAY(EVAL("x < y"))
+            DISPLAY(EVAL("x = 10"))
+            DISPLAY(EVAL("(x > 5) AND (y < 30)"))
+            "#,
+            "true\ntrue\ntrue",
+        );
+
+        assert_output(r#"DISPLAY(EVAL("1.5 + 2.3"))"#, "3.8");
+        assert_output(r#"DISPLAY(EVAL("3.0 * (4.5 - 2.5)"))"#, "6");
+
+        assert!(run_test(r#"DISPLAY(EVAL("1 + "))"#).is_err());
+        assert!(run_test(r#"DISPLAY(EVAL("1 / 0"))"#).is_err());
+        assert!(run_test(r#"DISPLAY(EVAL("invalid"))"#).is_err());
+    }
 }

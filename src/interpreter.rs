@@ -1339,6 +1339,19 @@ fn evaluate_node(
                 }
             }
         }
+        AstNode::Eval(expr) => {
+            let expr_val = evaluate_node(expr, Rc::clone(&env), debug)?;
+            if let Value::String(s) = expr_val {
+                let mut lexer = crate::lexer::Lexer::new(&s);
+                let tokens = lexer.tokenize();
+                let mut parser = crate::parser::Parser::new(tokens);
+                let ast = parser.parse_expression(debug)?;
+
+                evaluate_node(&ast, Rc::clone(&env), debug)
+            } else {
+                Err("EVAL requires a string argument".to_string())
+            }
+        }
         _ => Err(format!("Unimplemented node type: {:?}", node)),
     }
 }

@@ -9,7 +9,7 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.512-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.513-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -60,7 +60,6 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 <summary>Functionality</summary>
 
 - [ ] Dictionaries
-- [ ] Evaluation
 - [ ] Better error handling (line, column)
 - [ ] Networking
 - [ ] File IO

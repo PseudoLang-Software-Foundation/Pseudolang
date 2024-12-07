@@ -60,6 +60,7 @@ pub enum AstNode {
         error_var: Option<String>,
         catch_block: Box<AstNode>,
     },
+    Eval(Box<AstNode>),
 }
 
 #[derive(Debug, Clone)]
@@ -393,7 +394,7 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self, debug: bool) -> Result<AstNode, String> {
+    pub fn parse_expression(&mut self, debug: bool) -> Result<AstNode, String> {
         if self.match_token(&Token::Sort) {
             if !self.match_token(&Token::OpenParen) {
                 return Err("Expected '(' after SORT".to_string());
@@ -683,6 +684,17 @@ impl Parser {
                     return Err("Expected ')' after INPUT".to_string());
                 }
                 Ok(AstNode::Input(prompt))
+            }
+            Some(Token::Eval) => {
+                self.advance();
+                if !self.match_token(&Token::OpenParen) {
+                    return Err("Expected '(' after EVAL".to_string());
+                }
+                let expr = self.parse_expression(debug)?;
+                if !self.match_token(&Token::CloseParen) {
+                    return Err("Expected ')' after EVAL expression".to_string());
+                }
+                Ok(AstNode::Eval(Box::new(expr)))
             }
             _ => match self.advance() {
                 Some(Token::Integer(n)) => Ok(AstNode::Integer(n)),
