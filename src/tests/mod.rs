@@ -2463,6 +2463,20 @@ DISPLAY(arr)"#,
 
         assert_output(
             r#"
+        expression <- "x* (x+1)*(x+2)"
+        x <- 3
+        DISPLAY(EVAL(expression))"#,
+            "60",
+        );
+
+        assert_output(
+            r#"x <- 4
+        DISPLAY(TOSTRING(EVAL("x=3")) + " " + TOSTRING(EVAL("x = 4")))"#,
+            "false true",
+        );
+
+        assert_output(
+            r#"
             x <- 10
             y <- 20
             DISPLAY(EVAL("x < y"))

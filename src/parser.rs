@@ -353,6 +353,17 @@ impl Parser {
                 }
                 Ok(AstNode::Input(prompt))
             }
+            Some(Token::Eval) => {
+                self.advance();
+                if !self.match_token(&Token::OpenParen) {
+                    return Err("Expected '(' after 'EVAL'".to_string());
+                }
+                let expr = self.parse_expression(debug)?;
+                if !self.match_token(&Token::CloseParen) {
+                    return Err("Expected ')' after expression in 'EVAL'".to_string());
+                }
+                Ok(AstNode::Eval(Box::new(expr)))
+            }
             _ => {
                 Self::debug_print(
                     debug,
