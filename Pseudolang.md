@@ -435,6 +435,14 @@ TRY {
 
 The try-catch statement allows you to handle errors that might occur during program execution. Any statements inside the try block that cause an error will stop execution of that block and transfer control to the catch block. The error message is stored in the variable specified in parentheses after catch and can be used inside the catch block.
 
+```psl
+expression <- "x* (x+1)*(x+2)"
+x <- 3
+DISPLAY(EVAL(expression))
+```
+
+EVAL takes in a string expression, that will return the evaluated response as if it were executed in the program.
+
 `EXIT()`
 
 Terminates program execution immediately.

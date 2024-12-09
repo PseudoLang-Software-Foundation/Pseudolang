@@ -2469,6 +2469,8 @@ DISPLAY(arr)"#,
             "60",
         );
 
+        assert_output(r#"DISPLAY(EVAL("POW(2, 3)"))"#, "8");
+
         assert_output(
             r#"x <- 4
         DISPLAY(TOSTRING(EVAL("x=3")) + " " + TOSTRING(EVAL("x = 4")))"#,
