@@ -145,6 +145,32 @@ mod test {
     }
 
     #[test]
+    fn test_return() {
+        assert_output(r#"
+        PROCEDURE test1(num) {
+            RETURN (num)
+        }
+
+        PROCEDURE test2(num) {
+            RETURN num
+        }
+
+        PROCEDURE test3() {
+            RETURN
+        }
+
+        PROCEDURE test4() {
+            RETURN ()
+        }
+
+        DISPLAY(test1(5))
+        DISPLAY(test2(6))
+        DISPLAY(test3())
+        DISPLAY(test4())
+        "#, "5\n6");
+    }
+
+    #[test]
     fn test_boolean_operations() {
         assert_output("DISPLAY(TRUE AND FALSE)", "false");
         assert_output("DISPLAY(TRUE OR FALSE)", "true");

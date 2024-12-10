@@ -334,6 +334,9 @@ impl Parser {
                         }
                         Ok(AstNode::Return(Box::new(expr)))
                     }
+                } else if self.is_expression_start() {
+                    let expr = self.parse_expression(debug)?;
+                    Ok(AstNode::Return(Box::new(expr)))
                 } else {
                     Ok(AstNode::Return(Box::new(AstNode::Block(vec![]))))
                 }
