@@ -338,6 +338,14 @@ Converts all characters in the string to uppercase.
 
 Converts all characters in the string to lowercase.
 
+`STARTSWITH(fullstring, substring)`
+
+Returns TRUE if the fullstring starts with the given substring, FALSE otherwise.
+
+`ENDSWITH(fullstring, substring)`
+
+Returns TRUE if the fullstring ends with the given substring, FALSE otherwise.
+
 ## Data Types
 
 `1`

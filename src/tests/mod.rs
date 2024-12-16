@@ -146,7 +146,8 @@ mod test {
 
     #[test]
     fn test_return() {
-        assert_output(r#"
+        assert_output(
+            r#"
         PROCEDURE test1(num) {
             RETURN (num)
         }
@@ -167,7 +168,9 @@ mod test {
         DISPLAY(test2(6))
         DISPLAY(test3())
         DISPLAY(test4())
-        "#, "5\n6");
+        "#,
+            "5\n6",
+        );
     }
 
     #[test]
@@ -1007,13 +1010,13 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "List index out of bounds")]
+    #[should_panic(expected = "List index out of bounds: 4 (size: 3)")]
     fn test_list_index_out_of_bounds_high() {
         run_test("list <- [1, 2, 3]\nDISPLAY(list[4])").unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "List index out of bounds")]
+    #[should_panic(expected = "List index out of bounds: index cannot be less than 1")]
     fn test_list_index_out_of_bounds_low() {
         run_test("list <- [1, 2, 3]\nDISPLAY(list[0])").unwrap();
     }
@@ -2520,5 +2523,46 @@ DISPLAY(arr)"#,
         assert!(run_test(r#"DISPLAY(EVAL("1 + "))"#).is_err());
         assert!(run_test(r#"DISPLAY(EVAL("1 / 0"))"#).is_err());
         assert!(run_test(r#"DISPLAY(EVAL("invalid"))"#).is_err());
+    }
+
+    #[test]
+    fn test_string_prefix_suffix() {
+        assert_output(
+            r#"
+        DISPLAY(STARTSWITH("Hello World", "Hello"))
+        DISPLAY(STARTSWITH("Hello World", "World"))
+        DISPLAY(STARTSWITH("", ""))
+        DISPLAY(STARTSWITH("Hello", "HelloWorld"))
+        DISPLAY(STARTSWITH("testing", "test"))
+        "#,
+            "true\nfalse\ntrue\nfalse\ntrue",
+        );
+
+        assert_output(
+            r#"
+        DISPLAY(ENDSWITH("Hello World", "World"))
+        DISPLAY(ENDSWITH("Hello World", "Hello"))
+        DISPLAY(ENDSWITH("", ""))
+        DISPLAY(ENDSWITH("World", "WorldLong"))
+        DISPLAY(ENDSWITH("testing", "ing"))
+        "#,
+            "true\nfalse\ntrue\nfalse\ntrue",
+        );
+
+        assert_output(
+            r#"
+        text <- "Hello World"
+        start <- "Hello"
+        end <- "World"
+        DISPLAY(STARTSWITH(text, start))
+        DISPLAY(ENDSWITH(text, end))
+        "#,
+            "true\ntrue",
+        );
+
+        assert!(run_test(r#"STARTSWITH(123, "abc")"#).is_err());
+        assert!(run_test(r#"STARTSWITH("abc", 123)"#).is_err());
+        assert!(run_test(r#"ENDSWITH(123, "abc")"#).is_err());
+        assert!(run_test(r#"ENDSWITH("abc", 123)"#).is_err());
     }
 }

@@ -84,7 +84,7 @@ impl Environment {
     }
 }
 
-const MAX_STACK_DEPTH: usize = 1000;
+const MAX_STACK_DEPTH: usize = 1000000;
 static mut CURRENT_STACK_DEPTH: usize = 0;
 
 pub fn run(ast: AstNode) -> Result<String, String> {
@@ -890,6 +890,32 @@ fn evaluate_node(
                     }
                     _ => Err("RANGE requires one or two arguments".to_string()),
                 },
+                "STARTSWITH" => {
+                    if args.len() != 2 {
+                        return Err("STARTSWITH requires two arguments".to_string());
+                    }
+                    let fullstring = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let substring = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (fullstring, substring) {
+                        (Value::String(s), Value::String(sub)) => {
+                            Ok(Value::Boolean(s.starts_with(&sub)))
+                        }
+                        _ => Err("STARTSWITH requires two string arguments".to_string()),
+                    }
+                }
+                "ENDSWITH" => {
+                    if args.len() != 2 {
+                        return Err("ENDSWITH requires two arguments".to_string());
+                    }
+                    let fullstring = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                    let substring = evaluate_node(&args[1], Rc::clone(&env), debug)?;
+                    match (fullstring, substring) {
+                        (Value::String(s), Value::String(sub)) => {
+                            Ok(Value::Boolean(s.ends_with(&sub)))
+                        }
+                        _ => Err("ENDSWITH requires two string arguments".to_string()),
+                    }
+                }
                 _ => {
                     let procedure = env
                         .borrow()
