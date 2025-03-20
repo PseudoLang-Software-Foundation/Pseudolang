@@ -9,7 +9,7 @@
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.517-green" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.9.518-green" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -18,11 +18,21 @@ Welcome to Pseudolang! Pseudolang is a simple programming language written in Ru
 
 This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI Package, Raw WASM, WASM Bindgen).
 
+## Screenshots
+
+<p align="center">
+  <img src="./assets/fib_psl.png" alt="Fibonacci Example in Pseudolang" height="auto" width="auto">
+</p>
+
+<p align="center">
+  <img src="./assets/web.png" alt="Pseudolang Web Interpreter" height="auto" width="auto">
+</p>
+
 ## Releases
 
-Goto **[nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main)** and download the binary for your operating system.
+Go to **[nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main)** and download the binary for your operating system.
 
-There is also an **installer** you can download in [releases](https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases).
+There is also an **installer** for Windows, that you can download in [GitHub releases](https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases).
 
 ## Use
 
@@ -30,7 +40,7 @@ To use the compiled versions, run the executable and pass two parameters as the 
 
 If `fplc` is not added to path or environment variables, make sure to execute the binary specifically.
 
-Free Pseudolang Compiler = fplc (like gcc :)
+Free Pseudolang Compiler = fplc (like gcc, despite it being interpreted :)
 
 ## Compiling
 
@@ -38,8 +48,8 @@ In order to compile the project yourself, you will need to have rust installed.
 
 - Install [**rust**](https://www.rust-lang.org/tools/install), and make sure you have it added to PATH.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
-- - To build **release**, you will need bash, cross (cargo install cross), and docker. Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
-- - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
+  - To build **release**, you will need bash, cross (cargo install cross), and docker. Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
+  - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
 
 - In order to run the unit tests, simply run `cargo test`.
 - For the NSIS installer, just compile `./installer/pseudolang.nsi`
@@ -48,9 +58,9 @@ In order to compile the project yourself, you will need to have rust installed.
 
 [Pseudolang.md](Pseudolang.md) contains a full explanation of Collegeboard's Pseudocode and many features specific to PseudoLang.
 
-The file `src/tests/mod.rs` also contains various unit tests (examples of code) for Pseudolang.
+The file `src/tests/mod.rs` also contains various unit tests (examples of code) for PseudoLang.
 
-## Todo
+## To-do
 
 - [ ] Debian package
 - [ ] GitHub issue template
@@ -85,7 +95,7 @@ Feel free to make issues for any bugs or trouble that you experience with this! 
 
 ## Contributing
 
-We welcome contributions! If there are any bugs, or particularly pointing out limitations in [Pseudolang.md](Pseudolang.md) at the bottom, or adding things from the todo list, please make a pull request!
+We welcome contributions! If there are any bugs, or particularly pointing out limitations in [Pseudolang.md](Pseudolang.md) at the bottom, or adding things from the to-do list, please make a pull request!
 
 ## License
 
