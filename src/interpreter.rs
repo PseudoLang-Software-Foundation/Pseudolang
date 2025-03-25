@@ -680,11 +680,7 @@ fn evaluate_node(
                     }
                     let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     if let Value::Integer(n) = x {
-                        if n < 0 {
-                            Err("FACTORIAL requires a non-negative integer".to_string())
-                        } else {
-                            Ok(Value::Integer(factorial(n)))
-                        }
+                        Ok(Value::Integer(factorial(n)))
                     } else {
                         Err("FACTORIAL requires an integer argument".to_string())
                     }
@@ -840,14 +836,21 @@ fn evaluate_node(
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .map_err(|e| e.to_string())?;
-                        Ok(Value::Integer(now.as_secs() as i64))
+                        let secs = now.as_secs() as f64;
+                        let nanos = now.subsec_nanos() as f64 / 1_000_000_000.0;
+                        Ok(Value::Float(secs + nanos))
                     }
                     1 => {
                         let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                         if let Value::String(dt) = datetime {
                             use chrono::NaiveDateTime;
                             match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
-                                Ok(dt) => Ok(Value::Integer(dt.and_utc().timestamp())),
+                                Ok(dt) => {
+                                    let timestamp = dt.and_utc().timestamp() as f64;
+                                    let nanos = dt.and_utc().timestamp_subsec_nanos() as f64
+                                        / 1_000_000_000.0;
+                                    Ok(Value::Float(timestamp + nanos))
+                                }
                                 Err(e) => Err(format!("Invalid datetime format: {}", e)),
                             }
                         } else {
@@ -861,15 +864,26 @@ fn evaluate_node(
                         return Err("TIME requires one argument".to_string());
                     }
                     let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    if let Value::Integer(ts) = timestamp {
-                        use chrono::{TimeZone, Utc};
-                        let dt = Utc
-                            .timestamp_opt(ts, 0)
-                            .single()
-                            .ok_or("Invalid timestamp")?;
-                        Ok(Value::String(dt.naive_local().to_string()))
-                    } else {
-                        Err("TIME requires an integer timestamp".to_string())
+                    match timestamp {
+                        Value::Integer(ts) => {
+                            use chrono::{TimeZone, Utc};
+                            let dt = Utc
+                                .timestamp_opt(ts, 0)
+                                .single()
+                                .ok_or("Invalid timestamp")?;
+                            Ok(Value::String(dt.naive_local().to_string()))
+                        }
+                        Value::Float(ts) => {
+                            use chrono::{TimeZone, Utc};
+                            let secs = ts.floor() as i64;
+                            let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
+                            let dt = Utc
+                                .timestamp_opt(secs, nanos)
+                                .single()
+                                .ok_or("Invalid timestamp")?;
+                            Ok(Value::String(dt.naive_local().to_string()))
+                        }
+                        _ => Err("TIME requires a numeric timestamp".to_string()),
                     }
                 }
                 "TIMEZONE" => {
@@ -881,14 +895,24 @@ fn evaluate_node(
                     let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
                     let tz_name = evaluate_node(&args[1], Rc::clone(&env), debug)?;
 
-                    if let (Value::Integer(ts), Value::String(tz)) = (timestamp, tz_name) {
+                    if let Value::String(tz) = tz_name {
                         use chrono::{TimeZone, Utc};
                         use chrono_tz::Tz;
 
-                        let dt_utc = Utc
-                            .timestamp_opt(ts, 0)
-                            .single()
-                            .ok_or("Invalid timestamp")?;
+                        let dt_utc = match timestamp {
+                            Value::Integer(ts) => Utc
+                                .timestamp_opt(ts, 0)
+                                .single()
+                                .ok_or("Invalid timestamp")?,
+                            Value::Float(ts) => {
+                                let secs = ts.floor() as i64;
+                                let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
+                                Utc.timestamp_opt(secs, nanos)
+                                    .single()
+                                    .ok_or("Invalid timestamp")?
+                            }
+                            _ => return Err("TIMEZONE requires a numeric timestamp".to_string()),
+                        };
 
                         let tz: Tz = tz
                             .parse()
@@ -897,10 +921,7 @@ fn evaluate_node(
                         let dt_tz = dt_utc.with_timezone(&tz);
                         Ok(Value::String(dt_tz.naive_local().to_string()))
                     } else {
-                        Err(
-                            "TIMEZONE requires a timestamp (integer) and timezone name (string)"
-                                .to_string(),
-                        )
+                        Err("TIMEZONE requires a timezone name (string)".to_string())
                     }
                 }
                 "TIMEZONES" => {
@@ -913,6 +934,18 @@ fn evaluate_node(
                         .map(|tz| Value::String(tz.name().to_string()))
                         .collect();
                     Ok(Value::List(tzs))
+                }
+                "MILLITIME" => {
+                    if !args.is_empty() {
+                        return Err("MILLITIME takes no arguments".to_string());
+                    }
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|e| e.to_string())?;
+                    let millis = now.as_millis();
+                    // Cap at i64::MAX to avoid overflow
+                    let millis = std::cmp::min(millis, i64::MAX as u128) as i64;
+                    Ok(Value::Integer(millis))
                 }
                 "CONTAINS" => {
                     if args.len() != 2 {
@@ -1476,9 +1509,35 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         (Value::Null, BinaryOperator::NotEq, Value::Null) => Ok(Value::Boolean(false)),
         (Value::Null, _, _) | (_, _, Value::Null) => Ok(Value::Boolean(false)),
 
-        (Value::Integer(a), BinaryOperator::Add, Value::Integer(b)) => Ok(Value::Integer(a + b)),
-        (Value::Integer(a), BinaryOperator::Sub, Value::Integer(b)) => Ok(Value::Integer(a - b)),
-        (Value::Integer(a), BinaryOperator::Mul, Value::Integer(b)) => Ok(Value::Integer(a * b)),
+        (Value::Integer(a), BinaryOperator::Add, Value::Integer(b)) => {
+            if (*a > 0 && *b > i64::MAX - *a) || (*a < 0 && *b < i64::MIN - *a) {
+                Ok(Value::Float(*a as f64 + *b as f64))
+            } else {
+                Ok(Value::Integer(a + b))
+            }
+        }
+        (Value::Integer(a), BinaryOperator::Sub, Value::Integer(b)) => {
+            if (*b > 0 && *a < i64::MIN + *b) || (*b < 0 && *a > i64::MAX + *b) {
+                Ok(Value::Float(*a as f64 - *b as f64))
+            } else {
+                Ok(Value::Integer(a - b))
+            }
+        }
+        (Value::Integer(a), BinaryOperator::Mul, Value::Integer(b)) => {
+            if *a != 0 && *b != 0 {
+                if (*a > 0 && *b > 0 && *a > i64::MAX / *b)
+                    || (*a > 0 && *b < 0 && *b < i64::MIN / *a)
+                    || (*a < 0 && *b > 0 && *a < i64::MIN / *b)
+                    || (*a < 0 && *b < 0 && *a < i64::MAX / *b)
+                {
+                    Ok(Value::Float(*a as f64 * *b as f64))
+                } else {
+                    Ok(Value::Integer(a * b))
+                }
+            } else {
+                Ok(Value::Integer(0))
+            }
+        }
         (Value::Integer(a), BinaryOperator::Div, Value::Integer(b)) => {
             if *b == 0 {
                 Err("Division by zero".to_string())

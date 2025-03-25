@@ -480,9 +480,14 @@ mod test {
         ];
 
         for (input, expected_output) in test_cases {
-            let ast = crate::parser::parse_with_source(crate::lexer::Lexer::new(input).tokenize(), input, false)
-                .expect("Failed to parse");
-            let output = crate::interpreter::run_with_source(ast, input).expect("Interpreter error");
+            let ast = crate::parser::parse_with_source(
+                crate::lexer::Lexer::new(input).tokenize(),
+                input,
+                false,
+            )
+            .expect("Failed to parse");
+            let output =
+                crate::interpreter::run_with_source(ast, input).expect("Interpreter error");
             assert_eq!(output, expected_output, "Test failed for input '{}'", input);
         }
     }
@@ -2060,8 +2065,8 @@ DISPLAY(arr)"#,
     #[test]
     fn test_timestamp_functions() {
         let result = run_test("DISPLAY(TIMESTAMP())").unwrap();
-        let timestamp = result.trim().parse::<i64>().unwrap();
-        assert!(timestamp > 0);
+        let timestamp = result.trim().parse::<f64>().unwrap();
+        assert!(timestamp > 0.0);
 
         assert_output(
             r#"
@@ -2074,7 +2079,7 @@ DISPLAY(arr)"#,
         assert_output(
             r#"
             dt <- "2021-07-03 16:21:12.000000"
-            DISPLAY(TIMESTAMP(dt))
+            DISPLAY(TOSTRING(FLOOR(TIMESTAMP(dt))))
             "#,
             "1625329272",
         );
@@ -2084,7 +2089,7 @@ DISPLAY(arr)"#,
             ts <- TIMESTAMP()
             t <- TIME(ts)
             ts2 <- TIMESTAMP(t)
-            DISPLAY(ts = ts2)
+            DISPLAY(FLOOR(ts) = FLOOR(ts2))
         "#,
         )
         .unwrap();
