@@ -2,7 +2,7 @@
 
 [package]
 name = "fplc"
-version = "0.9.520"
+version = "0.9.521"
 edition = "2021"
 description = "A pseudolang interpreter written in Rust"
 repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
@@ -54,10 +54,11 @@ wasm-bindgen = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 getrandom = { version = "0.2", features = ["js"] }
 wasi = { version = "0.11", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [features]
 default = ["native"]
 native = ["chrono", "chrono-tz"]
-wasm = ["wasm-bindgen", "console_error_panic_hook"]
+wasm = ["wasm-bindgen", "console_error_panic_hook", "js-sys"]
 wasi = ["dep:wasi"]
-bindgen = ["wasm-bindgen", "console_error_panic_hook"]
+bindgen = ["wasm-bindgen", "console_error_panic_hook", "js-sys"]

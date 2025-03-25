@@ -935,12 +935,39 @@ fn evaluate_node(
 
                         #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
                         {
-                            let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                            if let Value::String(_) = datetime {
-                                // Can't parse datetime strings in WASM without chrono
-                                Err("TIMESTAMP with datetime parameter not implemented in WebAssembly".to_string())
-                            } else {
-                                Err("TIMESTAMP requires a datetime string".to_string())
+                            let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                            match timestamp {
+                                Value::Integer(ts) => {
+                                    let js_timestamp = JsValue::from_f64((ts as f64) * 1000.0);
+                                    let date = js_sys::Date::new(&js_timestamp);
+                                    let year = date.get_utc_full_year();
+                                    let month = date.get_utc_month() + 1;
+                                    let day = date.get_utc_date();
+                                    let hours = date.get_utc_hours();
+                                    let minutes = date.get_utc_minutes();
+                                    let seconds = date.get_utc_seconds();
+                                    let formatted = format!(
+                                        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                                        year, month, day, hours, minutes, seconds
+                                    );
+                                    Ok(Value::String(formatted))
+                                }
+                                Value::Float(ts) => {
+                                    let js_timestamp = JsValue::from_f64(ts * 1000.0);
+                                    let date = js_sys::Date::new(&js_timestamp);
+                                    let year = date.get_utc_full_year();
+                                    let month = date.get_utc_month() + 1;
+                                    let day = date.get_utc_date();
+                                    let hours = date.get_utc_hours();
+                                    let minutes = date.get_utc_minutes();
+                                    let seconds = date.get_utc_seconds();
+                                    let formatted = format!(
+                                        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                                        year, month, day, hours, minutes, seconds
+                                    );
+                                    Ok(Value::String(formatted))
+                                }
+                                _ => Err("TIME requires a numeric timestamp".to_string()),
                             }
                         }
 
@@ -984,9 +1011,40 @@ fn evaluate_node(
 
                     #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
                     {
-                        // Just return a message indicating that this function isn't fully implemented
-                        // This avoids the JS binding complexity
-                        Err("The TIME function is not fully implemented in WebAssembly. Consider using native mode for full functionality.".to_string())
+                        let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        match timestamp {
+                            Value::Integer(ts) => {
+                                let js_timestamp = JsValue::from_f64((ts as f64) * 1000.0);
+                                let date = js_sys::Date::new(&js_timestamp);
+                                let year = date.get_utc_full_year();
+                                let month = date.get_utc_month() + 1;
+                                let day = date.get_utc_date();
+                                let hours = date.get_utc_hours();
+                                let minutes = date.get_utc_minutes();
+                                let seconds = date.get_utc_seconds();
+                                let formatted = format!(
+                                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                                    year, month, day, hours, minutes, seconds
+                                );
+                                Ok(Value::String(formatted))
+                            }
+                            Value::Float(ts) => {
+                                let js_timestamp = JsValue::from_f64(ts * 1000.0);
+                                let date = js_sys::Date::new(&js_timestamp);
+                                let year = date.get_utc_full_year();
+                                let month = date.get_utc_month() + 1;
+                                let day = date.get_utc_date();
+                                let hours = date.get_utc_hours();
+                                let minutes = date.get_utc_minutes();
+                                let seconds = date.get_utc_seconds();
+                                let formatted = format!(
+                                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                                    year, month, day, hours, minutes, seconds
+                                );
+                                Ok(Value::String(formatted))
+                            }
+                            _ => Err("TIME requires a numeric timestamp".to_string()),
+                        }
                     }
 
                     #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
@@ -1834,6 +1892,9 @@ fn factorial(n: i64) -> i64 {
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 use wasm_bindgen::prelude::*;
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+use js_sys;
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
 #[wasm_bindgen]
