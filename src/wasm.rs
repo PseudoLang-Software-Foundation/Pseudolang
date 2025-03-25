@@ -49,7 +49,15 @@ pub extern "C" fn run_pseudolang_raw(ptr: *const u8, len: usize, debug: bool) ->
 #[wasm_bindgen]
 pub fn run_pseudolang(input: &str, debug: bool) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
-    execute_code_with_capture(input, debug).map_err(|e| JsValue::from_str(&e))
+
+    match execute_code_with_capture(input, debug) {
+        Ok(output) => Ok(output),
+        Err(error_msg) => {
+            let error_output = format!("Error: {}", error_msg);
+
+            Err(JsValue::from_str(&error_output))
+        }
+    }
 }
 
 #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]

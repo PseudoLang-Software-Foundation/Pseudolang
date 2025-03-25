@@ -358,26 +358,53 @@ fn evaluate_node(
         }
 
         AstNode::Input(prompt) => {
-            let mut input_str = String::default();
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let mut input_str = String::default();
 
-            if let Some(prompt_expr) = prompt {
-                let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
-                let prompt_str = value_to_string(&prompt_val);
-                print!("{}", prompt_str);
-                io::stdout().flush().unwrap();
+                if let Some(prompt_expr) = prompt {
+                    let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
+                    let prompt_str = value_to_string(&prompt_val);
+                    print!("{}", prompt_str);
+                    io::stdout().flush().unwrap();
+                }
+
+                io::stdin()
+                    .read_line(&mut input_str)
+                    .map_err(|e| e.to_string())?;
+                let input = input_str.trim().to_string();
+
+                if prompt.is_none() {
+                    env.borrow_mut().output.push_str(&input);
+                    env.borrow_mut().output.push('\n');
+                }
+
+                Ok(Value::String(input))
             }
 
-            io::stdin()
-                .read_line(&mut input_str)
-                .map_err(|e| e.to_string())?;
-            let input = input_str.trim().to_string();
+            #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+            {
+                let prompt_text = if let Some(prompt_expr) = prompt {
+                    let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
+                    value_to_string(&prompt_val)
+                } else {
+                    "Input:".to_string()
+                };
 
-            if prompt.is_none() {
-                env.borrow_mut().output.push_str(&input);
-                env.borrow_mut().output.push('\n');
+                let input = crate::interpreter::prompt(&prompt_text);
+
+                if prompt.is_none() {
+                    env.borrow_mut().output.push_str(&input);
+                    env.borrow_mut().output.push('\n');
+                }
+
+                Ok(Value::String(input))
             }
 
-            Ok(Value::String(input))
+            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+            {
+                Err("INPUT is not supported in this environment".to_string())
+            }
         }
 
         AstNode::ProcedureDecl(name, params, body) => {
@@ -398,17 +425,35 @@ fn evaluate_node(
                         return Err("SLEEP requires one argument".to_string());
                     }
                     io::stdout().flush().unwrap();
-                    let seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    match seconds {
-                        Value::Integer(n) => {
-                            thread::sleep(Duration::from_secs(n as u64));
-                            Ok(Value::Unit)
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        match seconds {
+                            Value::Integer(n) => {
+                                thread::sleep(Duration::from_secs(n as u64));
+                                Ok(Value::Unit)
+                            }
+                            Value::Float(f) => {
+                                thread::sleep(Duration::from_secs_f64(f));
+                                Ok(Value::Unit)
+                            }
+                            _ => Err("SLEEP requires a numeric argument".to_string()),
                         }
-                        Value::Float(f) => {
-                            thread::sleep(Duration::from_secs_f64(f));
-                            Ok(Value::Unit)
-                        }
-                        _ => Err("SLEEP requires a numeric argument".to_string()),
+                    }
+
+                    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+                    {
+                        let _seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+
+                        log("SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.");
+
+                        Ok(Value::Unit)
+                    }
+
+                    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+                    {
+                        Err("SLEEP is not supported in this environment".to_string())
                     }
                 }
                 "CONCAT" => {
@@ -833,28 +878,75 @@ fn evaluate_node(
                 }
                 "TIMESTAMP" => match args.len() {
                     0 => {
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map_err(|e| e.to_string())?;
-                        let secs = now.as_secs() as f64;
-                        let nanos = now.subsec_nanos() as f64 / 1_000_000_000.0;
-                        Ok(Value::Float(secs + nanos))
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map_err(|e| e.to_string())?;
+                            let secs = now.as_secs() as f64;
+                            let nanos = now.subsec_nanos() as f64 / 1_000_000_000.0;
+                            Ok(Value::Float(secs + nanos))
+                        }
+
+                        // cool high precision fix for browser
+                        #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+                        {
+                            let unix_ms = date_now();
+
+                            let perf_time = get_high_precision_time();
+
+                            let fract_ms = perf_time % 1.0;
+
+                            let nanos = fract_ms * 1_000_000.0;
+
+                            let seconds = unix_ms / 1000.0;
+                            let seconds_int = seconds.floor();
+                            let millis_part = seconds - seconds_int;
+
+                            let timestamp = seconds_int + millis_part + (nanos / 1_000_000_000.0);
+
+                            Ok(Value::Float(timestamp))
+                        }
+
+                        #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+                        {
+                            Err("TIMESTAMP is not supported in this environment".to_string())
+                        }
                     }
                     1 => {
-                        let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                        if let Value::String(dt) = datetime {
-                            use chrono::NaiveDateTime;
-                            match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
-                                Ok(dt) => {
-                                    let timestamp = dt.and_utc().timestamp() as f64;
-                                    let nanos = dt.and_utc().timestamp_subsec_nanos() as f64
-                                        / 1_000_000_000.0;
-                                    Ok(Value::Float(timestamp + nanos))
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                            if let Value::String(dt) = datetime {
+                                use chrono::NaiveDateTime;
+                                match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
+                                    Ok(dt) => {
+                                        let timestamp = dt.and_utc().timestamp() as f64;
+                                        let nanos = dt.and_utc().timestamp_subsec_nanos() as f64
+                                            / 1_000_000_000.0;
+                                        Ok(Value::Float(timestamp + nanos))
+                                    }
+                                    Err(e) => Err(format!("Invalid datetime format: {}", e)),
                                 }
-                                Err(e) => Err(format!("Invalid datetime format: {}", e)),
+                            } else {
+                                Err("TIMESTAMP requires a datetime string".to_string())
                             }
-                        } else {
-                            Err("TIMESTAMP requires a datetime string".to_string())
+                        }
+
+                        #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+                        {
+                            let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                            if let Value::String(_) = datetime {
+                                // Can't parse datetime strings in WASM without chrono
+                                Err("TIMESTAMP with datetime parameter not implemented in WebAssembly".to_string())
+                            } else {
+                                Err("TIMESTAMP requires a datetime string".to_string())
+                            }
+                        }
+
+                        #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+                        {
+                            Err("TIMESTAMP is not supported in this environment".to_string())
                         }
                     }
                     _ => Err("TIMESTAMP requires 0 or 1 arguments".to_string()),
@@ -863,27 +955,43 @@ fn evaluate_node(
                     if args.len() != 1 {
                         return Err("TIME requires one argument".to_string());
                     }
-                    let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    match timestamp {
-                        Value::Integer(ts) => {
-                            use chrono::{TimeZone, Utc};
-                            let dt = Utc
-                                .timestamp_opt(ts, 0)
-                                .single()
-                                .ok_or("Invalid timestamp")?;
-                            Ok(Value::String(dt.naive_local().to_string()))
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
+                        match timestamp {
+                            Value::Integer(ts) => {
+                                use chrono::{TimeZone, Utc};
+                                let dt = Utc
+                                    .timestamp_opt(ts, 0)
+                                    .single()
+                                    .ok_or("Invalid timestamp")?;
+                                Ok(Value::String(dt.naive_local().to_string()))
+                            }
+                            Value::Float(ts) => {
+                                use chrono::{TimeZone, Utc};
+                                let secs = ts.floor() as i64;
+                                let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
+                                let dt = Utc
+                                    .timestamp_opt(secs, nanos)
+                                    .single()
+                                    .ok_or("Invalid timestamp")?;
+                                Ok(Value::String(dt.naive_local().to_string()))
+                            }
+                            _ => Err("TIME requires a numeric timestamp".to_string()),
                         }
-                        Value::Float(ts) => {
-                            use chrono::{TimeZone, Utc};
-                            let secs = ts.floor() as i64;
-                            let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
-                            let dt = Utc
-                                .timestamp_opt(secs, nanos)
-                                .single()
-                                .ok_or("Invalid timestamp")?;
-                            Ok(Value::String(dt.naive_local().to_string()))
-                        }
-                        _ => Err("TIME requires a numeric timestamp".to_string()),
+                    }
+
+                    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+                    {
+                        // Just return a message indicating that this function isn't fully implemented
+                        // This avoids the JS binding complexity
+                        Err("The TIME function is not fully implemented in WebAssembly. Consider using native mode for full functionality.".to_string())
+                    }
+
+                    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+                    {
+                        Err("TIME is not supported in this environment".to_string())
                     }
                 }
                 "TIMEZONE" => {
@@ -1721,5 +1829,35 @@ fn factorial(n: i64) -> i64 {
         0
     } else {
         (1..=n).product()
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+use wasm_bindgen::prelude::*;
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+
+    #[wasm_bindgen(js_namespace = window)]
+    fn prompt(s: &str) -> String;
+
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    fn date_now() -> f64;
+
+    #[wasm_bindgen(js_namespace = performance, js_name = now, catch)]
+    fn performance_now() -> Result<f64, JsValue>;
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+fn get_high_precision_time() -> f64 {
+    match performance_now() {
+        Ok(time) => time,
+        Err(_) => {
+            log("Warning: performance.now() not available, falling back to Date.now()");
+            date_now() % 1000.0
+        }
     }
 }
