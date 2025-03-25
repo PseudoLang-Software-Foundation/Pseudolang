@@ -69,22 +69,12 @@ impl PseudoError {
             .ok()
             .and_then(|re| re.captures(&self.message))
         {
-            let index = caps.get(1).unwrap().as_str();
-            let size = caps.get(2).unwrap().as_str();
-            message = format!(
-                "List index out of bounds: index {} exceeds list length {}",
-                index, size
-            );
+            return self.message.clone();
         } else if let Some(caps) = Regex::new(r"String index out of bounds: (\d+) \(size: (\d+)\)")
             .ok()
             .and_then(|re| re.captures(&self.message))
         {
-            let index = caps.get(1).unwrap().as_str();
-            let size = caps.get(2).unwrap().as_str();
-            message = format!(
-                "String index out of bounds: index {} exceeds string length {}",
-                index, size
-            );
+            return self.message.clone();
         } else if self.message.contains("Division by zero") {
             message = "Division by zero error: cannot divide by zero".to_string();
         } else if self.message.contains("Modulo by zero") {
