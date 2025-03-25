@@ -1069,7 +1069,9 @@ fn evaluate_node(
             };
 
             unsafe {
-                CURRENT_STACK_DEPTH -= 1;
+                if CURRENT_STACK_DEPTH > 0 {
+                    CURRENT_STACK_DEPTH -= 1;
+                }
             }
 
             result
@@ -1713,5 +1715,11 @@ fn gcd(mut m: i64, mut n: i64) -> i64 {
 }
 
 fn factorial(n: i64) -> i64 {
-    (1..=n).product()
+    if n > 20 {
+        i64::MAX
+    } else if n < 0 {
+        0
+    } else {
+        (1..=n).product()
+    }
 }
