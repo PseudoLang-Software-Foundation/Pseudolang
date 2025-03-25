@@ -1,3 +1,4 @@
+use crate::error::{PseudoError, SourceTracker};
 use crate::lexer::{Lexer, Token};
 
 #[derive(Debug, Clone)]
@@ -91,11 +92,19 @@ pub enum UnaryOperator {
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    #[allow(dead_code)]
+    source: String,
+    source_tracker: Option<SourceTracker>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser {
+            tokens,
+            current: 0,
+            source: String::new(),
+            source_tracker: None,
+        }
     }
 
     fn debug_print(debug: bool, message: &str) {
@@ -128,13 +137,25 @@ impl Parser {
         false
     }
 
-    fn parse_program(&mut self, debug: bool) -> Result<AstNode, String> {
+    pub fn new_with_source(tokens: Vec<Token>, source: &str) -> Self {
+        Parser {
+            tokens,
+            current: 0,
+            source: source.to_string(),
+            source_tracker: Some(SourceTracker::new(source)),
+        }
+    }
+
+    fn parse_program(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         Self::debug_print(debug, "Starting program parse");
         let mut statements = Vec::new();
 
         while self.peek().is_some() {
             Self::debug_print(debug, &format!("Current token: {:?}", self.peek()));
-            statements.push(self.parse_statement(debug)?);
+            match self.parse_statement(debug) {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => return Err(e),
+            }
         }
 
         Self::debug_print(
@@ -147,7 +168,7 @@ impl Parser {
         Ok(AstNode::Program(statements))
     }
 
-    fn parse_statement(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_statement(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         Self::debug_print(
             debug,
             &format!("Parsing statement at position {}", self.current),
@@ -163,7 +184,7 @@ impl Parser {
                 }
 
                 if !self.match_token(&Token::Catch) {
-                    return Err("Expected 'catch' after try block".to_string());
+                    return Err(self.create_error("Expected 'catch' after try block", self.current));
                 }
 
                 let mut error_var = None;
@@ -171,11 +192,15 @@ impl Parser {
                     if let Some(Token::Identifier(name)) = self.advance() {
                         error_var = Some(name);
                     } else {
-                        return Err("Expected identifier after 'catch('".to_string());
+                        return Err(
+                            self.create_error("Expected identifier after 'catch('", self.current)
+                        );
                     }
 
                     if !self.match_token(&Token::CloseParen) {
-                        return Err("Expected ')' after catch variable".to_string());
+                        return Err(
+                            self.create_error("Expected ')' after catch variable", self.current)
+                        );
                     }
                 }
 
@@ -199,18 +224,20 @@ impl Parser {
             Some(Token::Sort) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after SORT".to_string());
+                    return Err(self.create_error("Expected '(' after SORT", self.current));
                 }
                 let list_expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after list expression".to_string());
+                    return Err(
+                        self.create_error("Expected ')' after list expression", self.current)
+                    );
                 }
                 Ok(AstNode::Sort(Box::new(list_expr)))
             }
             Some(Token::Identifier(_)) => {
                 let identifier = match self.advance() {
                     Some(Token::Identifier(name)) => name,
-                    _ => return Err("Expected identifier".to_string()),
+                    _ => return Err(self.create_error("Expected identifier", self.current)),
                 };
 
                 let mut list_accesses = Vec::new();
@@ -218,7 +245,7 @@ impl Parser {
                     self.advance();
                     let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
-                        return Err("Expected ']'".to_string());
+                        return Err(self.create_error("Expected ']'", self.current));
                     }
                     list_accesses.push(index);
                 }
@@ -258,7 +285,10 @@ impl Parser {
                         while !self.match_token(&Token::CloseParen) {
                             if !args.is_empty() {
                                 if !self.match_token(&Token::Comma) {
-                                    return Err("Expected comma between arguments".to_string());
+                                    return Err(self.create_error(
+                                        "Expected comma between arguments",
+                                        self.current,
+                                    ));
                                 }
                             }
                             args.push(self.parse_expression(debug)?);
@@ -308,12 +338,13 @@ impl Parser {
             Some(Token::Class) => self.parse_class(debug),
             Some(Token::Display(_)) => {
                 self.advance();
+
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after DISPLAY".to_string());
+                    return Err(self.create_error("Expected '(' after DISPLAY", self.current));
                 }
                 let expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after expression".to_string());
+                    return Err(self.create_error("Expected ')' after expression", self.current));
                 }
                 Ok(AstNode::Display(Some(Box::new(expr))))
             }
@@ -330,7 +361,10 @@ impl Parser {
                     } else {
                         let expr = self.parse_expression(debug)?;
                         if !self.match_token(&Token::CloseParen) {
-                            return Err("Expected ')' after return expression".to_string());
+                            return Err(self.create_error(
+                                "Expected ')' after return expression",
+                                self.current,
+                            ));
                         }
                         Ok(AstNode::Return(Box::new(expr)))
                     }
@@ -344,7 +378,7 @@ impl Parser {
             Some(Token::Input) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after INPUT".to_string());
+                    return Err(self.create_error("Expected '(' after INPUT", self.current));
                 }
                 let prompt = if self.peek() != Some(&Token::CloseParen) {
                     Some(Box::new(self.parse_expression(debug)?))
@@ -352,18 +386,20 @@ impl Parser {
                     None
                 };
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after INPUT".to_string());
+                    return Err(self.create_error("Expected ')' after INPUT", self.current));
                 }
                 Ok(AstNode::Input(prompt))
             }
             Some(Token::Eval) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after 'EVAL'".to_string());
+                    return Err(self.create_error("Expected '(' after 'EVAL'", self.current));
                 }
                 let expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after expression in 'EVAL'".to_string());
+                    return Err(
+                        self.create_error("Expected ')' after expression in 'EVAL'", self.current)
+                    );
                 }
                 Ok(AstNode::Eval(Box::new(expr)))
             }
@@ -372,7 +408,8 @@ impl Parser {
                     debug,
                     &format!("Unexpected token in statement: {:?}", self.peek()),
                 );
-                Err("Unexpected token in statement".to_string())
+
+                Err(self.create_error("Unexpected token in statement", self.current))
             }
         }
     }
@@ -408,14 +445,14 @@ impl Parser {
         }
     }
 
-    pub fn parse_expression(&mut self, debug: bool) -> Result<AstNode, String> {
+    pub fn parse_expression(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         if self.match_token(&Token::Sort) {
             if !self.match_token(&Token::OpenParen) {
-                return Err("Expected '(' after SORT".to_string());
+                return Err(self.create_error("Expected '(' after SORT", self.current));
             }
             let list_expr = self.parse_expression(debug)?;
             if !self.match_token(&Token::CloseParen) {
-                return Err("Expected ')' after list expression".to_string());
+                return Err(self.create_error("Expected ')' after list expression", self.current));
             }
             Ok(AstNode::Sort(Box::new(list_expr)))
         } else {
@@ -426,40 +463,50 @@ impl Parser {
         }
     }
 
-    fn parse_builtin_function(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_builtin_function(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let function_token = self.peek().cloned();
         match function_token {
             Some(Token::Concat) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after CONCAT".to_string());
+                    return Err(self.create_error("Expected '(' after CONCAT", self.current));
                 }
                 let arg1 = self.parse_expression(debug)?;
                 if !self.match_token(&Token::Comma) {
-                    return Err("Expected comma after first argument".to_string());
+                    return Err(
+                        self.create_error("Expected comma after first argument", self.current)
+                    );
                 }
                 let arg2 = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after second argument".to_string());
+                    return Err(
+                        self.create_error("Expected ')' after second argument", self.current)
+                    );
                 }
                 Ok(AstNode::Concat(Box::new(arg1), Box::new(arg2)))
             }
             Some(Token::Substring) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after SUBSTRING".to_string());
+                    return Err(self.create_error("Expected '(' after SUBSTRING", self.current));
                 }
                 let string_expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::Comma) {
-                    return Err("Expected comma after string expression".to_string());
+                    return Err(
+                        self.create_error("Expected comma after string expression", self.current)
+                    );
                 }
                 let start_expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::Comma) {
-                    return Err("Expected comma after start expression".to_string());
+                    return Err(
+                        self.create_error("Expected comma after start expression", self.current)
+                    );
                 }
                 let end_expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after end expression".to_string());
+                    return Err(
+                        self.create_error("Expected ')' after end expression", self.current)
+                    );
                 }
                 Ok(AstNode::Substring(
                     Box::new(string_expr),
@@ -470,19 +517,19 @@ impl Parser {
             Some(Token::ListLength) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after LENGTH".to_string());
+                    return Err(self.create_error("Expected '(' after LENGTH", self.current));
                 }
                 let arg = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after argument".to_string());
+                    return Err(self.create_error("Expected ')' after argument", self.current));
                 }
                 Ok(AstNode::Length(Box::new(arg)))
             }
-            _ => Err("Unknown built-in function".to_string()),
+            _ => Err(self.create_error("Unknown built-in function", self.current)),
         }
     }
 
-    fn parse_logical_or(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_logical_or(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_logical_and(debug)?;
 
         while self.match_token(&Token::Or) {
@@ -492,7 +539,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_logical_and(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_logical_and(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_equality(debug)?;
 
         while self.match_token(&Token::And) {
@@ -502,7 +549,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_equality(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_equality(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_comparison(debug)?;
 
         while let Some(token) = self.peek() {
@@ -523,7 +570,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_comparison(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_comparison(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_term(debug)?;
 
         while let Some(token) = self.peek() {
@@ -549,7 +596,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_term(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_term(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_factor(debug)?;
 
         while let Some(token) = self.peek() {
@@ -570,7 +617,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_factor(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_factor(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut expr = self.parse_unary(debug)?;
 
         while let Some(token) = self.peek() {
@@ -596,7 +643,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_unary(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_unary(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         if let Some(token) = self.peek() {
             match token {
                 Token::Not => {
@@ -612,11 +659,11 @@ impl Parser {
                 _ => self.parse_primary(debug),
             }
         } else {
-            Err("Unexpected end of input".to_string())
+            Err(self.create_error("Unexpected end of input", self.current))
         }
     }
 
-    fn parse_primary(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_primary(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         match self.peek() {
             Some(Token::ListAppend) => self.parse_list_append(debug),
             Some(Token::ListRemove) => self.parse_list_remove(debug),
@@ -630,18 +677,18 @@ impl Parser {
             Some(Token::Sort) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after SORT".to_string());
+                    return Err(self.create_error("Expected '(' after SORT", self.current));
                 }
                 let list_expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after list".to_string());
+                    return Err(self.create_error("Expected ')' after list", self.current));
                 }
                 Ok(AstNode::Sort(Box::new(list_expr)))
             }
             Some(Token::Identifier(_)) => {
                 let name = match self.advance() {
                     Some(Token::Identifier(name)) => name,
-                    _ => return Err("Expected identifier".to_string()),
+                    _ => return Err(self.create_error("Expected identifier", self.current)),
                 };
 
                 let mut node = AstNode::Identifier(name.clone());
@@ -650,7 +697,9 @@ impl Parser {
                     self.advance();
                     let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
-                        return Err("Expected ']' after list index".to_string());
+                        return Err(
+                            self.create_error("Expected ']' after list index", self.current)
+                        );
                     }
                     node = AstNode::ListAccess(Box::new(node), Box::new(index));
                 }
@@ -660,7 +709,10 @@ impl Parser {
                     while !self.match_token(&Token::CloseParen) {
                         if !args.is_empty() {
                             if !self.match_token(&Token::Comma) {
-                                return Err("Expected comma between arguments".to_string());
+                                return Err(self.create_error(
+                                    "Expected comma between arguments",
+                                    self.current,
+                                ));
                             }
                         }
                         args.push(self.parse_expression(debug)?);
@@ -687,7 +739,7 @@ impl Parser {
             Some(Token::Input) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after INPUT".to_string());
+                    return Err(self.create_error("Expected '(' after INPUT", self.current));
                 }
                 let prompt = if self.peek() != Some(&Token::CloseParen) {
                     Some(Box::new(self.parse_expression(debug)?))
@@ -695,18 +747,20 @@ impl Parser {
                     None
                 };
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after INPUT".to_string());
+                    return Err(self.create_error("Expected ')' after INPUT", self.current));
                 }
                 Ok(AstNode::Input(prompt))
             }
             Some(Token::Eval) => {
                 self.advance();
                 if !self.match_token(&Token::OpenParen) {
-                    return Err("Expected '(' after EVAL".to_string());
+                    return Err(self.create_error("Expected '(' after EVAL", self.current));
                 }
                 let expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after EVAL expression".to_string());
+                    return Err(
+                        self.create_error("Expected ')' after EVAL expression", self.current)
+                    );
                 }
                 Ok(AstNode::Eval(Box::new(expr)))
             }
@@ -722,44 +776,47 @@ impl Parser {
                 Some(Token::OpenParen) => {
                     let expr = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseParen) {
-                        return Err("Expected ')' after expression".to_string());
+                        return Err(
+                            self.create_error("Expected ')' after expression", self.current)
+                        );
                     }
                     Ok(expr)
                 }
                 Some(Token::OpenBracket) => self.parse_list(debug),
-                _ => Err("Unexpected token in expression".to_string()),
+                _ => Err(self.create_error("Unexpected token in expression", self.current)),
             },
         }
     }
 
-    fn parse_class(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_class(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         let name = match self.advance() {
             Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected class name".to_string()),
+            _ => return Err(self.create_error("Expected class name", self.current)),
         };
         let body = self.parse_block(debug)?;
         Ok(AstNode::ClassDecl(name, Box::new(body)))
     }
 
-    fn parse_foreach(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_foreach(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::Each) {
-            return Err("Expected EACH after FOR".to_string());
+            return Err(self.create_error("Expected EACH after FOR", self.current));
         }
         let var_name = match self.advance() {
             Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected identifier after EACH".to_string()),
+            _ => return Err(self.create_error("Expected identifier after EACH", self.current)),
         };
         if !self.match_token(&Token::In) {
-            return Err("Expected IN after identifier".to_string());
+            return Err(self.create_error("Expected IN after identifier", self.current));
         }
+
         let list = self.parse_expression(debug)?;
         let body = self.parse_block(debug)?;
         Ok(AstNode::ForEach(var_name, Box::new(list), Box::new(body)))
     }
 
-    fn parse_block(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_block(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         Self::debug_print(
             debug,
             &format!("Parsing block, current token: {:?}", self.peek()),
@@ -799,24 +856,24 @@ impl Parser {
                 }
 
                 if !self.match_token(&Token::CloseBrace) {
-                    return Err("Expected '}' at end of block".to_string());
+                    return Err(self.create_error("Expected '}' at end of block", self.current));
                 }
 
                 Self::debug_print(debug, "Block parsing complete");
                 Ok(AstNode::Block(statements))
             }
-            _ => Err("Expected '{' to start block".to_string()),
+            _ => Err(self.create_error("Expected '{' to start block", self.current)),
         }
     }
 
-    fn parse_procedure(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_procedure(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         let name = match self.advance() {
             Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected procedure name".to_string()),
+            _ => return Err(self.create_error("Expected procedure name", self.current)),
         };
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after procedure name".to_string());
+            return Err(self.create_error("Expected '(' after procedure name", self.current));
         }
         let mut params = Vec::new();
         while let Some(token) = self.peek() {
@@ -825,46 +882,48 @@ impl Parser {
             }
             if !params.is_empty() {
                 if !self.match_token(&Token::Comma) {
-                    return Err("Expected comma between parameters".to_string());
+                    return Err(
+                        self.create_error("Expected comma between parameters", self.current)
+                    );
                 }
             }
             match self.advance() {
                 Some(Token::Identifier(param)) => params.push(param),
-                _ => return Err("Expected parameter name".to_string()),
+                _ => return Err(self.create_error("Expected parameter name", self.current)),
             }
         }
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')' after parameters".to_string());
+            return Err(self.create_error("Expected ')' after parameters", self.current));
         }
         let body = self.parse_block(debug)?;
         Ok(AstNode::ProcedureDecl(name, params, Box::new(body)))
     }
 
-    fn parse_display_inline(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_display_inline(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after DISPLAYINLINE".to_string());
+            return Err(self.create_error("Expected '(' after DISPLAYINLINE", self.current));
         }
         let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')' after expression".to_string());
+            return Err(self.create_error("Expected ')' after expression", self.current));
         }
         Ok(AstNode::DisplayInline(Box::new(expr)))
     }
 
-    fn parse_comment(&mut self, _debug: bool) -> Result<AstNode, String> {
+    fn parse_comment(&mut self, _debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         match self.advance() {
             Some(Token::String(text)) => Ok(AstNode::Comment(text)),
-            _ => Err("Expected string after COMMENT".to_string()),
+            _ => Err(self.create_error("Expected string after COMMENT", self.current)),
         }
     }
 
-    fn parse_import(&mut self, _debug: bool) -> Result<AstNode, String> {
+    fn parse_import(&mut self, _debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         match self.advance() {
             Some(Token::String(path)) => Ok(AstNode::Import(path)),
-            _ => Err("Expected string after IMPORT".to_string()),
+            _ => Err(self.create_error("Expected string after IMPORT", self.current)),
         }
     }
 
@@ -883,7 +942,7 @@ impl Parser {
         }
     }
 
-    fn parse_list(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_list(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         let mut elements = Vec::new();
         loop {
             while let Some(Token::Newline) = self.peek() {
@@ -897,7 +956,9 @@ impl Parser {
 
             if !elements.is_empty() {
                 if !self.match_token(&Token::Comma) {
-                    return Err("Expected comma between list elements".to_string());
+                    return Err(
+                        self.create_error("Expected comma between list elements", self.current)
+                    );
                 }
                 while let Some(Token::Newline) = self.peek() {
                     self.advance();
@@ -913,56 +974,56 @@ impl Parser {
         Ok(AstNode::List(elements))
     }
 
-    fn parse_list_length(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_list_length(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after LENGTH".to_string());
+            return Err(self.create_error("Expected '(' after LENGTH", self.current));
         }
         let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Length(Box::new(list)))
     }
 
-    fn parse_list_remove(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_list_remove(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after REMOVE".to_string());
+            return Err(self.create_error("Expected '(' after REMOVE", self.current));
         }
         let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after list".to_string());
+            return Err(self.create_error("Expected comma after list", self.current));
         }
         let index = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')' after index".to_string());
+            return Err(self.create_error("Expected ')' after index", self.current));
         }
         Ok(AstNode::Remove(Box::new(list), Box::new(index)))
     }
 
-    fn parse_list_append(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_list_append(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after APPEND".to_string());
+            return Err(self.create_error("Expected '(' after APPEND", self.current));
         }
         let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after list".to_string());
+            return Err(self.create_error("Expected comma after list", self.current));
         }
         let value = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Append(Box::new(list), Box::new(value)))
     }
 
-    fn parse_if(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_if(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         let condition = if self.match_token(&Token::OpenParen) {
             let expr = self.parse_expression(debug)?;
             if !self.match_token(&Token::CloseParen) {
-                return Err("Expected ')' after condition".to_string());
+                return Err(self.create_error("Expected ')' after condition", self.current));
             }
             expr
         } else {
@@ -998,7 +1059,7 @@ impl Parser {
         ))
     }
 
-    fn parse_repeat(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_repeat(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         Self::debug_print(debug, "Starting repeat parse");
         self.advance();
 
@@ -1007,7 +1068,7 @@ impl Parser {
             let condition = if self.match_token(&Token::OpenParen) {
                 let expr = self.parse_expression(debug)?;
                 if !self.match_token(&Token::CloseParen) {
-                    return Err("Expected ')' after condition".to_string());
+                    return Err(self.create_error("Expected ')' after condition", self.current));
                 }
                 expr
             } else {
@@ -1023,29 +1084,29 @@ impl Parser {
         } else {
             let times = self.parse_expression(debug)?;
             if !self.match_token(&Token::Times) {
-                return Err("Expected TIMES after repeat count".to_string());
+                return Err(self.create_error("Expected TIMES after repeat count", self.current));
             }
             let body = self.parse_block(debug)?;
             Ok(AstNode::RepeatTimes(Box::new(times), Box::new(body)))
         }
     }
 
-    fn parse_list_insert(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_list_insert(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after INSERT".to_string());
+            return Err(self.create_error("Expected '(' after INSERT", self.current));
         }
         let list = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after list".to_string());
+            return Err(self.create_error("Expected comma after list", self.current));
         }
         let index = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after index".to_string());
+            return Err(self.create_error("Expected comma after index", self.current));
         }
         let value = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Insert(
             Box::new(list),
@@ -1054,38 +1115,38 @@ impl Parser {
         ))
     }
 
-    fn parse_random(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_random(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after RANDOM".to_string());
+            return Err(self.create_error("Expected '(' after RANDOM", self.current));
         }
         let min = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after min value".to_string());
+            return Err(self.create_error("Expected comma after min value", self.current));
         }
         let max = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Random(Box::new(min), Box::new(max)))
     }
 
-    fn parse_substring(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_substring(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after SUBSTRING".to_string());
+            return Err(self.create_error("Expected '(' after SUBSTRING", self.current));
         }
         let string = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after string".to_string());
+            return Err(self.create_error("Expected comma after string", self.current));
         }
         let start = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after start index".to_string());
+            return Err(self.create_error("Expected comma after start index", self.current));
         }
         let end = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Substring(
             Box::new(string),
@@ -1094,48 +1155,65 @@ impl Parser {
         ))
     }
 
-    fn parse_concat(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_concat(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after CONCAT".to_string());
+            return Err(self.create_error("Expected '(' after CONCAT", self.current));
         }
         let str1 = self.parse_expression(debug)?;
         if !self.match_token(&Token::Comma) {
-            return Err("Expected comma after first string".to_string());
+            return Err(self.create_error("Expected comma after first string", self.current));
         }
         let str2 = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::Concat(Box::new(str1), Box::new(str2)))
     }
 
-    fn parse_to_string(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_to_string(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after TOSTRING".to_string());
+            return Err(self.create_error("Expected '(' after TOSTRING", self.current));
         }
         let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::ToString(Box::new(expr)))
     }
 
-    fn parse_to_num(&mut self, debug: bool) -> Result<AstNode, String> {
+    fn parse_to_num(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
         self.advance();
         if !self.match_token(&Token::OpenParen) {
-            return Err("Expected '(' after TONUM".to_string());
+            return Err(self.create_error("Expected '(' after TONUM", self.current));
         }
         let expr = self.parse_expression(debug)?;
         if !self.match_token(&Token::CloseParen) {
-            return Err("Expected ')'".to_string());
+            return Err(self.create_error("Expected ')'", self.current));
         }
         Ok(AstNode::ToNum(Box::new(expr)))
     }
+
+    fn create_error(&self, message: &str, pos: usize) -> PseudoError {
+        if let Some(ref source_tracker) = self.source_tracker {
+            source_tracker.create_error(message, pos)
+        } else {
+            PseudoError::new(message)
+        }
+    }
 }
 
-pub fn parse(tokens: Vec<Token>, debug: bool) -> Result<AstNode, String> {
+pub fn parse(tokens: Vec<Token>, debug: bool) -> Result<AstNode, PseudoError> {
     let mut parser = Parser::new(tokens);
+    parser.parse_program(debug)
+}
+
+pub fn parse_with_source(
+    tokens: Vec<Token>,
+    source: &str,
+    debug: bool,
+) -> Result<AstNode, PseudoError> {
+    let mut parser = Parser::new_with_source(tokens, source);
     parser.parse_program(debug)
 }

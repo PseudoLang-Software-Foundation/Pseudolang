@@ -1,3 +1,4 @@
+use crate::error::{PseudoError, SourceTracker};
 use crate::parser::{AstNode, BinaryOperator, UnaryOperator};
 use rand::Rng;
 use std::cell::RefCell;
@@ -6,6 +7,37 @@ use std::io::{self, Write};
 use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct NodePosition {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct NodePositions {
+    positions: HashMap<String, NodePosition>,
+}
+
+impl NodePositions {
+    fn new() -> Self {
+        Self {
+            positions: HashMap::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn track_node(&mut self, node_id: String, position: NodePosition) {
+        self.positions.insert(node_id, position);
+    }
+
+    #[allow(dead_code)]
+    fn get_position(&self, node_id: &str) -> Option<&NodePosition> {
+        self.positions.get(node_id)
+    }
+}
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -26,8 +58,10 @@ struct Environment {
     procedures: HashMap<String, (Vec<String>, AstNode)>,
     classes: HashMap<String, AstNode>,
     output: String,
+    source_tracker: Option<SourceTracker>,
     return_value: Option<Value>,
     parent: Option<Rc<RefCell<Environment>>>,
+    node_positions: NodePositions,
 }
 
 impl Environment {
@@ -37,8 +71,10 @@ impl Environment {
             procedures: HashMap::new(),
             classes: HashMap::new(),
             output: String::new(),
+            source_tracker: None,
             return_value: None,
             parent: None,
+            node_positions: NodePositions::new(),
         }
     }
 
@@ -48,8 +84,10 @@ impl Environment {
             procedures: parent.borrow().procedures.clone(),
             classes: parent.borrow().classes.clone(),
             output: String::new(),
+            source_tracker: parent.borrow().source_tracker.clone(),
             return_value: None,
             parent: Some(Rc::clone(&parent)),
+            node_positions: parent.borrow().node_positions.clone(),
         }
     }
 
@@ -73,20 +111,49 @@ impl Environment {
     }
 
     #[allow(dead_code)]
-    fn append_to_list(&mut self, name: &str, value: Value) -> Result<Value, String> {
+    fn append_to_list(&mut self, name: &str, value: Value) -> Result<Value, PseudoError> {
         if let Some(Value::List(mut elements)) = self.get(name) {
             elements.push(value.clone());
             self.set(name.to_string(), Value::List(elements.clone()));
             Ok(Value::List(elements))
         } else {
-            Err(format!("Variable {} is not a list", name))
+            Err(PseudoError::new(&format!(
+                "Variable {} is not a list",
+                name
+            )))
+        }
+    }
+
+    fn set_source_tracker(&mut self, source: &str) {
+        self.source_tracker = Some(SourceTracker::new(source));
+    }
+
+    #[allow(dead_code)]
+    fn create_error(&self, message: &str, pos: Option<usize>) -> PseudoError {
+        if let Some(ref source_tracker) = self.source_tracker {
+            if let Some(position) = pos {
+                source_tracker.create_error(message, position)
+            } else {
+                PseudoError::new(message)
+            }
+        } else {
+            PseudoError::new(message)
+        }
+    }
+
+    fn create_smart_error(&self, message: &str) -> PseudoError {
+        if let Some(ref source_tracker) = self.source_tracker {
+            source_tracker.create_smart_error(message)
+        } else {
+            PseudoError::new(message)
         }
     }
 }
 
-const MAX_STACK_DEPTH: usize = 1000000;
+const MAX_STACK_DEPTH: usize = 10000000;
 static mut CURRENT_STACK_DEPTH: usize = 0;
 
+#[allow(dead_code)]
 pub fn run(ast: AstNode) -> Result<String, String> {
     let env = Rc::new(RefCell::new(Environment::new()));
     let debug = false;
@@ -99,6 +166,17 @@ pub fn run(ast: AstNode) -> Result<String, String> {
     }
     let output = env.borrow().output.clone();
     Ok(output)
+}
+
+pub fn run_with_source(ast: AstNode, source: &str) -> Result<String, PseudoError> {
+    let env = Rc::new(RefCell::new(Environment::new()));
+    env.borrow_mut().set_source_tracker(source);
+    let debug = false;
+
+    match evaluate_node(&ast, Rc::clone(&env), debug) {
+        Ok(_) => Ok(env.borrow().output.clone()),
+        Err(err) => Err(env.borrow().create_smart_error(&err)),
+    }
 }
 
 fn evaluate_node(
@@ -146,10 +224,14 @@ fn evaluate_node(
             Ok(Value::List(values))
         }
 
-        AstNode::Identifier(name) => env
-            .borrow()
-            .get(name)
-            .ok_or_else(|| format!("Undefined variable: {}", name)),
+        AstNode::Identifier(name) => {
+            let result = env.borrow().get(name);
+            if result.is_none() {
+                Err(format!("Undefined variable: {}", name))
+            } else {
+                Ok(result.unwrap())
+            }
+        }
 
         AstNode::Assignment(target, value) => {
             let val = evaluate_node(value, Rc::clone(&env), debug)?;

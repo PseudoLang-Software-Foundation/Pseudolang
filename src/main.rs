@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Read;
 
 mod core;
+mod error;
 mod interpreter;
 mod lexer;
 mod parser;

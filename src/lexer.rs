@@ -1,3 +1,5 @@
+use crate::error::SourceTracker;
+
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Token {
@@ -93,6 +95,8 @@ pub struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
     input: &'a str,
     pos: usize,
+    #[allow(dead_code)]
+    source_tracker: SourceTracker,
 }
 
 impl<'a> Lexer<'a> {
@@ -101,6 +105,7 @@ impl<'a> Lexer<'a> {
             chars: input.chars().peekable(),
             input,
             pos: 0,
+            source_tracker: SourceTracker::new(input),
         }
     }
 
@@ -439,5 +444,10 @@ impl<'a> Lexer<'a> {
             }
             _ => Some(Token::Identifier(next_char.to_string())),
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_source_tracker(&self) -> &SourceTracker {
+        &self.source_tracker
     }
 }

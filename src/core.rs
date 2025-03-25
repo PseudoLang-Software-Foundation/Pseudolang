@@ -3,8 +3,8 @@ use std::fmt::Write;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
-pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<String, String> {
-    let mut lexer = Lexer::new(input);
+pub fn execute_code(source_code: &str, debug: bool, return_output: bool) -> Result<String, String> {
+    let mut lexer = Lexer::new(source_code);
     let tokens = lexer.tokenize();
 
     if debug {
@@ -13,7 +13,7 @@ pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<Str
         println!("\n=== Parser Starting ===");
     }
 
-    let ast = parser::parse(tokens, debug)?;
+    let ast = parser::parse_with_source(tokens, source_code, debug).map_err(|e| e.format())?;
 
     if debug {
         println!("\n=== Parser Output ===");
@@ -21,7 +21,14 @@ pub fn execute_code(input: &str, debug: bool, return_output: bool) -> Result<Str
         println!("\n=== Starting Execution ===");
     }
 
-    let output = interpreter::run(ast)?;
+    let output = match interpreter::run_with_source(ast, source_code) {
+        Ok(output) => output,
+        Err(e) => {
+            let err_str = e.format();
+            return Err(err_str);
+        }
+    };
+
     if !return_output {
         // placeholder for now
     }
@@ -40,7 +47,7 @@ pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, Str
         writeln!(output, "\n=== Parser Starting ===").unwrap();
     }
 
-    let ast = parser::parse(tokens, false)?;
+    let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format())?;
 
     if debug {
         writeln!(output, "\n=== Parser Output ===").unwrap();
@@ -48,7 +55,11 @@ pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, Str
         writeln!(output, "\n=== Starting Execution ===").unwrap();
     }
 
-    let program_output = interpreter::run(ast)?;
+    let program_output = match interpreter::run_with_source(ast, input) {
+        Ok(output) => output,
+        Err(e) => return Err(e.format()),
+    };
+
     writeln!(output, "{}", program_output).unwrap();
 
     Ok(output)

@@ -120,6 +120,7 @@ dependencies = [
  "getrandom",
  "libc",
  "rand",
+ "regex",
  "wasi",
  "wasm-bindgen",
  "winapi",

@@ -7,8 +7,8 @@ mod test {
     fn run_test(input: &str) -> Result<String, String> {
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize();
-        let ast = parser::parse(tokens, false)?;
-        let output = interpreter::run(ast)?;
+        let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format())?;
+        let output = interpreter::run_with_source(ast, input).map_err(|e| e.format())?;
         Ok(output.trim_end().to_string())
     }
 
@@ -480,9 +480,9 @@ mod test {
         ];
 
         for (input, expected_output) in test_cases {
-            let ast = crate::parser::parse(crate::lexer::Lexer::new(input).tokenize(), false)
+            let ast = crate::parser::parse_with_source(crate::lexer::Lexer::new(input).tokenize(), input, false)
                 .expect("Failed to parse");
-            let output = crate::interpreter::run(ast).expect("Interpreter error");
+            let output = crate::interpreter::run_with_source(ast, input).expect("Interpreter error");
             assert_eq!(output, expected_output, "Test failed for input '{}'", input);
         }
     }
