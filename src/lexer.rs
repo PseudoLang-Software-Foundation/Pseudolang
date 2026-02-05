@@ -1,4 +1,5 @@
 use crate::error::Span;
+use num_bigint::BigInt;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -47,7 +48,7 @@ pub enum Token {
     Procedure,
     Return,
 
-    Integer(i64),
+    Integer(BigInt),
     Float(f64),
     String(String),
     RawString(String),
