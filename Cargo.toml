@@ -3,8 +3,8 @@
 [package]
 name = "fplc"
 version = "0.9.521"
-edition = "2021"
-description = "A pseudolang interpreter written in Rust"
+edition = "2024"
+description = "A Pseudolang interpreter written in Rust"
 repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
 license = "MIT"
 
@@ -29,16 +29,16 @@ panic = "abort"
 strip = true
 
 [dependencies]
-rand = "0.8.5"
+rand = "0.9"
 chrono = { version = "0.4", optional = true }
-chrono-tz = { version = "0.10.0", optional = true }
+chrono-tz = { version = "0.10", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
-regex = "1.10.2"
+regex = "1.12"
 console_error_panic_hook = { version = "0.1", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 chrono = "0.4"
-chrono-tz = "0.10.0"
+chrono-tz = "0.10"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["winuser"] }

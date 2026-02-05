@@ -65,14 +65,16 @@ impl PseudoError {
     fn format_message(&self) -> String {
         let mut message = self.message.clone();
 
-        if let Some(caps) = Regex::new(r"List index out of bounds: (\d+) \(size: (\d+)\)")
+        if Regex::new(r"List index out of bounds: (\d+) \(size: (\d+)\)")
             .ok()
             .and_then(|re| re.captures(&self.message))
+            .is_some()
         {
             return self.message.clone();
-        } else if let Some(caps) = Regex::new(r"String index out of bounds: (\d+) \(size: (\d+)\)")
+        } else if Regex::new(r"String index out of bounds: (\d+) \(size: (\d+)\)")
             .ok()
             .and_then(|re| re.captures(&self.message))
+            .is_some()
         {
             return self.message.clone();
         } else if self.message.contains("Division by zero") {
