@@ -65,13 +65,7 @@ impl PseudoError {
     fn format_message(&self) -> String {
         let mut message = self.message.clone();
 
-        if Regex::new(r"List index out of bounds: (\d+) \(size: (\d+)\)")
-            .ok()
-            .and_then(|re| re.captures(&self.message))
-            .is_some()
-        {
-            return self.message.clone();
-        } else if Regex::new(r"String index out of bounds: (\d+) \(size: (\d+)\)")
+        if Regex::new(r"(?:List|String) index out of bounds: (\d+) \(size: (\d+)\)")
             .ok()
             .and_then(|re| re.captures(&self.message))
             .is_some()
@@ -127,7 +121,10 @@ impl PseudoError {
             .and_then(|re| re.captures(&self.message))
         {
             let proc_name = caps.get(1).unwrap().as_str();
-            message = format!("Procedure not found: '{}' is not defined. Check for typos or ensure it's defined before use.", proc_name);
+            message = format!(
+                "Procedure not found: '{}' is not defined. Check for typos or ensure it's defined before use.",
+                proc_name
+            );
         } else if self.message.contains("Cannot convert string to number") {
             message =
                 "Cannot convert string to number: the string does not represent a valid number"
@@ -247,26 +244,24 @@ impl SourceTracker {
                     }
                 }
             }
-        } else if error_type.contains("List index out of bounds")
-            || error_type.contains("String index out of bounds")
-        {
-            if let Some(caps) = Regex::new(r"index (\d+) exceeds .* length (\d+)")
+        } else if (error_type.contains("List index out of bounds")
+            || error_type.contains("String index out of bounds"))
+            && let Some(caps) = Regex::new(r"index (\d+) exceeds .* length (\d+)")
                 .ok()
                 .and_then(|re| re.captures(error_type))
-            {
-                let index = caps.get(1).unwrap().as_str();
+        {
+            let index = caps.get(1).unwrap().as_str();
 
-                for (line_num, line) in self.lines.iter().enumerate() {
-                    if line.trim_start().starts_with("COMMENT") {
-                        continue;
-                    }
+            for (line_num, line) in self.lines.iter().enumerate() {
+                if line.trim_start().starts_with("COMMENT") {
+                    continue;
+                }
 
-                    let pattern = format!("[{}]", index);
-                    if line.contains(&pattern) {
-                        let idx_pos = line.find(&pattern).unwrap_or(0);
+                let pattern = format!("[{}]", index);
+                if line.contains(&pattern) {
+                    let idx_pos = line.find(&pattern).unwrap_or(0);
 
-                        return Some((line_num + 1, idx_pos + 1));
-                    }
+                    return Some((line_num + 1, idx_pos + 1));
                 }
             }
         }
@@ -299,14 +294,15 @@ impl SourceTracker {
             }
 
             for (line_num, line) in self.lines.iter().enumerate() {
-                if line.contains("[") && line.contains("]") {
-                    if let Some(bracket_pos) = line.find("[") {
-                        let mut pos = 0;
-                        for i in 0..line_num {
-                            pos += self.lines[i].len() + 1;
-                        }
-                        return pos + bracket_pos + 1;
+                if line.contains("[")
+                    && line.contains("]")
+                    && let Some(bracket_pos) = line.find("[")
+                {
+                    let mut pos = 0;
+                    for i in 0..line_num {
+                        pos += self.lines[i].len() + 1;
                     }
+                    return pos + bracket_pos + 1;
                 }
             }
         } else if error_message.contains("Division by zero")
@@ -329,26 +325,25 @@ impl SourceTracker {
                     }
                 }
             }
-        } else if error_message.contains("Undefined variable:") {
-            if let Some(caps) = Regex::new(r"'([^']+)'")
+        } else if error_message.contains("Undefined variable:")
+            && let Some(caps) = Regex::new(r"'([^']+)'")
                 .ok()
                 .and_then(|re| re.captures(error_message))
-            {
-                let var_name = caps.get(1).unwrap().as_str();
+        {
+            let var_name = caps.get(1).unwrap().as_str();
 
-                for (line_num, line) in self.lines.iter().enumerate() {
-                    if !line.trim_start().starts_with("COMMENT") && line.contains(var_name) {
-                        if !line.contains(&format!("{} <-", var_name))
-                            && !line.contains(&format!("{}:", var_name))
-                        {
-                            let var_pos = line.find(var_name).unwrap_or(0);
-                            let mut pos = 0;
-                            for i in 0..line_num {
-                                pos += self.lines[i].len() + 1;
-                            }
-                            return pos + var_pos;
-                        }
+            for (line_num, line) in self.lines.iter().enumerate() {
+                if !line.trim_start().starts_with("COMMENT")
+                    && line.contains(var_name)
+                    && !line.contains(&format!("{} <-", var_name))
+                    && !line.contains(&format!("{}:", var_name))
+                {
+                    let var_pos = line.find(var_name).unwrap_or(0);
+                    let mut pos = 0;
+                    for i in 0..line_num {
+                        pos += self.lines[i].len() + 1;
                     }
+                    return pos + var_pos;
                 }
             }
         }
@@ -370,29 +365,26 @@ impl SourceTracker {
     }
 
     pub fn create_smart_error(&self, message: &str) -> PseudoError {
-        if message.contains("Undefined variable:") {
-            if let Some(var_name) = Self::extract_var_name(message) {
-                if let Some((line, column)) = self.find_error_line(&var_name, Some("<-")) {
-                    let line_content = self.get_line_content(line);
-                    return PseudoError::with_location(message, line, column, line_content);
-                }
-            }
+        if message.contains("Undefined variable:")
+            && let Some(var_name) = Self::extract_var_name(message)
+            && let Some((line, column)) = self.find_error_line(&var_name, Some("<-"))
+        {
+            let line_content = self.get_line_content(line);
+            return PseudoError::with_location(message, line, column, line_content);
         }
 
-        if message.contains("List index out of bounds:")
-            || message.contains("String index out of bounds:")
-        {
-            if let Some(caps) = Regex::new(r"index (\d+) exceeds")
+        if (message.contains("List index out of bounds:")
+            || message.contains("String index out of bounds:"))
+            && let Some(caps) = Regex::new(r"index (\d+) exceeds")
                 .ok()
                 .and_then(|re| re.captures(message))
-            {
-                let index = caps.get(1).unwrap().as_str();
-                let pattern = format!("[{}]", index);
+        {
+            let index = caps.get(1).unwrap().as_str();
+            let pattern = format!("[{}]", index);
 
-                if let Some((line, column)) = self.find_error_line(&pattern, None) {
-                    let line_content = self.get_line_content(line);
-                    return PseudoError::with_location(message, line, column, line_content);
-                }
+            if let Some((line, column)) = self.find_error_line(&pattern, None) {
+                let line_content = self.get_line_content(line);
+                return PseudoError::with_location(message, line, column, line_content);
             }
         }
 
@@ -419,10 +411,10 @@ impl SourceTracker {
         exclude_pattern: Option<&str>,
     ) -> Option<(usize, usize)> {
         for (line_num, line_content) in self.lines.iter().enumerate() {
-            if let Some(pattern) = exclude_pattern {
-                if line_content.contains(pattern) {
-                    continue;
-                }
+            if let Some(pattern) = exclude_pattern
+                && line_content.contains(pattern)
+            {
+                continue;
             }
 
             if line_content.trim_start().starts_with("COMMENT") {
@@ -438,13 +430,9 @@ impl SourceTracker {
     }
 
     pub fn extract_var_name(error_msg: &str) -> Option<String> {
-        if let Some(caps) = Regex::new(r"Undefined variable: '?([^']+)'?")
+        Regex::new(r"Undefined variable: '?([^']+)'?")
             .ok()
             .and_then(|re| re.captures(error_msg))
-        {
-            Some(caps.get(1).unwrap().as_str().to_string())
-        } else {
-            None
-        }
+            .map(|caps| caps.get(1).unwrap().as_str().to_string())
     }
 }

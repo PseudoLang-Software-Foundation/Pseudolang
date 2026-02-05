@@ -114,7 +114,7 @@ impl<'a> Lexer<'a> {
         while let Some(token) = self.next_token() {
             match token {
                 Token::Comment => {
-                    while let Some(c) = self.chars.next() {
+                    for c in self.chars.by_ref() {
                         self.pos += 1;
                         if c == '\n' {
                             break;
@@ -209,7 +209,7 @@ impl<'a> Lexer<'a> {
                 self.chars.next();
                 self.pos += 1;
                 let mut string = String::new();
-                while let Some(c) = self.chars.next() {
+                for c in self.chars.by_ref() {
                     self.pos += 1;
                     if c == '"' {
                         break;
@@ -232,7 +232,7 @@ impl<'a> Lexer<'a> {
                     if c == '{' {
                         let mut var = String::new();
                         let mut brace_count = 1;
-                        while let Some(c) = self.chars.next() {
+                        for c in self.chars.by_ref() {
                             self.pos += 1;
                             if c == '{' {
                                 brace_count += 1;
@@ -314,7 +314,7 @@ impl<'a> Lexer<'a> {
                         number.push(c);
                         self.chars.next();
                         self.pos += 1;
-                    } else if c.is_digit(10) {
+                    } else if c.is_ascii_digit() {
                         number.push(c);
                         self.chars.next();
                         self.pos += 1;
@@ -388,7 +388,7 @@ impl<'a> Lexer<'a> {
                             self.chars.next();
                             self.pos += 1;
                             let mut string = String::new();
-                            while let Some(c) = self.chars.next() {
+                            for c in self.chars.by_ref() {
                                 self.pos += 1;
                                 if c == '"' {
                                     break;
