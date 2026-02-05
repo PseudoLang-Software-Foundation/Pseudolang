@@ -116,7 +116,7 @@ Returns the greatest common divisor of a and b.
 
 `FACTORIAL(x)`
 
-Returns the factorial of x.
+Returns the factorial of x. Works for any non-negative integer (arbitrary precision).
 
 `DEGREES(x)`
 
@@ -363,7 +363,7 @@ Returns TRUE if the fullstring ends with the given substring, FALSE otherwise.
 
 `1`
 
-Integer (64 bit)
+Integer (arbitrary precision -- integers have unlimited size)
 
 `0.1`
 

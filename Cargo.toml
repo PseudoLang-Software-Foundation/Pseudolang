@@ -29,6 +29,9 @@ panic = "abort"
 strip = true
 
 [dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
 rand = "0.9"
 chrono = { version = "0.4", optional = true }
 chrono-tz = { version = "0.10", optional = true }
@@ -38,6 +41,7 @@ console_error_panic_hook = { version = "0.1", optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 chrono = "0.4"
 chrono-tz = "0.10"
+stacker = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["winuser"] }

@@ -250,8 +250,8 @@ fn test_integer_division_truncation() {
 
 #[test]
 fn test_integer_overflow_promotion() {
-    assert_output("DISPLAY(9223372036854775807 + 1)", "9223372036854776000");
-    assert_output("DISPLAY(9223372036854775807 * 2)", "18446744073709552000");
+    assert_output("DISPLAY(9223372036854775807 + 1)", "9223372036854775808");
+    assert_output("DISPLAY(9223372036854775807 * 2)", "18446744073709551614");
 }
 
 #[test]
@@ -329,4 +329,113 @@ fn test_zero_edge_cases() {
     assert_output("DISPLAY(0 + 0)", "0");
     assert_output("DISPLAY(0 * 999)", "0");
     assert_output("DISPLAY(0 - 0)", "0");
+}
+
+#[test]
+fn test_bigint_literal_beyond_i64() {
+    assert_output("DISPLAY(99999999999999999999)", "99999999999999999999");
+    assert_output(
+        "DISPLAY(100000000000000000000 + 1)",
+        "100000000000000000001",
+    );
+}
+
+#[test]
+fn test_bigint_arithmetic() {
+    assert_output(
+        "DISPLAY(9223372036854775808 + 9223372036854775808)",
+        "18446744073709551616",
+    );
+    assert_output("DISPLAY(9223372036854775808 * 2)", "18446744073709551616");
+    assert_output(
+        "DISPLAY(999999999999999999999999 - 999999999999999999999998)",
+        "1",
+    );
+}
+
+#[test]
+fn test_bigint_division_modulo() {
+    assert_output("DISPLAY(100000000000000000000 / 3)", "33333333333333333333");
+    assert_output("DISPLAY(100000000000000000000 MOD 3)", "1");
+}
+
+#[test]
+fn test_bigint_comparisons() {
+    assert_output(
+        "DISPLAY(99999999999999999999 > 99999999999999999998)",
+        "true",
+    );
+    assert_output(
+        "DISPLAY(99999999999999999999 = 99999999999999999999)",
+        "true",
+    );
+    assert_output(
+        "DISPLAY(99999999999999999999 < 100000000000000000000)",
+        "true",
+    );
+}
+
+#[test]
+fn test_bigint_factorial() {
+    assert_output(
+        "DISPLAY(FACTORIAL(50))",
+        "30414093201713378043612608166064768844377641568960512000000000000",
+    );
+    assert_output("DISPLAY(FACTORIAL(0))", "1");
+    assert_output("DISPLAY(FACTORIAL(1))", "1");
+    assert_output("DISPLAY(FACTORIAL(20))", "2432902008176640000");
+    assert_output("DISPLAY(FACTORIAL(21))", "51090942171709440000");
+}
+
+#[test]
+fn test_bigint_pow() {
+    assert_output(
+        "DISPLAY(POW(2, 200))",
+        "1606938044258990275541962092341162602522202993782792835301376",
+    );
+    assert_output("DISPLAY(POW(10, 30))", "1000000000000000000000000000000");
+}
+
+#[test]
+fn test_bigint_tonum() {
+    assert_output(
+        "DISPLAY(TONUM(\"99999999999999999999\"))",
+        "99999999999999999999",
+    );
+}
+
+#[test]
+fn test_bigint_gcd() {
+    assert_output("DISPLAY(GCD(100000000000000000000, 3))", "1");
+    assert_output(
+        "DISPLAY(GCD(100000000000000000000, 100000000000000000000))",
+        "100000000000000000000",
+    );
+}
+
+#[test]
+fn test_bigint_tostring() {
+    assert_output(
+        "x <- 99999999999999999999\nDISPLAY(TOSTRING(x))",
+        "99999999999999999999",
+    );
+}
+
+#[test]
+fn test_bigint_negation() {
+    assert_output("DISPLAY(-99999999999999999999)", "-99999999999999999999");
+    assert_output(
+        "x <- 99999999999999999999\nDISPLAY(-x)",
+        "-99999999999999999999",
+    );
+}
+
+#[test]
+fn test_bigint_mixed_with_float() {
+    assert_output("DISPLAY(1000000 + 0.5)", "1000000.5");
+    assert_output("DISPLAY(1000000 * 1.5)", "1500000");
+    assert_output(
+        "DISPLAY(99999999999999999999 + 1.0)",
+        "100000000000000000000",
+    );
 }

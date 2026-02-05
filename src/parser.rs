@@ -1,5 +1,6 @@
 use crate::error::{PSLError, Span};
 use crate::lexer::{Lexer, Token};
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone)]
 pub struct Spanned {
@@ -16,7 +17,7 @@ impl Spanned {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum AstNode {
-    Integer(i64),
+    Integer(BigInt),
     Float(f64),
     String(String),
     Boolean(bool),
