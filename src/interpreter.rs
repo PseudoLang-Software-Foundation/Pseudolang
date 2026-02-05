@@ -7,7 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::rc::Rc;
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -137,6 +139,7 @@ fn evaluate_node(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool) -> 
     evaluate_node_impl(node, env, debug)
 }
 
+// skipcq: RS-R1000
 fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool) -> EvalResult {
     let Spanned {
         node: ref ast_node,
@@ -376,823 +379,38 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             Ok(Value::Unit)
         }
 
-        AstNode::ProcedureCall(name, args) => match name.as_str() {
-            "SLEEP" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("SLEEP requires one argument", span, &env));
-                }
-                io::stdout().flush().unwrap();
-
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    match seconds {
-                        Value::Integer(n) => {
-                            let secs = n.to_u64().unwrap_or(0);
-                            thread::sleep(Duration::from_secs(secs));
-                            Ok(Value::Unit)
-                        }
-                        Value::Float(f) => {
-                            thread::sleep(Duration::from_secs_f64(f));
-                            Ok(Value::Unit)
-                        }
-                        _ => Err(runtime_err("SLEEP requires a numeric argument", span, &env)),
-                    }
-                }
-
-                #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-                {
-                    let _seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    log(
-                        "SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.",
-                    );
-                    Ok(Value::Unit)
-                }
-
-                #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-                {
-                    Err(runtime_err(
-                        "SLEEP is not supported in this environment",
-                        span,
-                        &env,
-                    ))
-                }
+        AstNode::ProcedureCall(name, args) => {
+            if let Some(result) = eval_builtin(name, args, &env, span, debug) {
+                return result;
             }
-            "CONCAT" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("CONCAT requires two arguments", span, &env));
-                }
-                let s1 = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let s2 = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                if let (Value::String(a), Value::String(b)) = (s1, s2) {
-                    Ok(Value::String(format!("{}{}", a, b)))
-                } else {
-                    Err(runtime_err("CONCAT requires string arguments", span, &env))
-                }
-            }
-            "SUBSTRING" => {
-                if args.len() != 3 {
-                    return Err(runtime_err(
-                        "SUBSTRING requires three arguments",
-                        span,
-                        &env,
-                    ));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let start_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                let end_val = evaluate_node(&args[2], Rc::clone(&env), debug)?;
-                if let (Value::String(s), Value::Integer(start), Value::Integer(end)) =
-                    (str_val, start_val, end_val)
-                {
-                    let start_idx = &start - BigInt::one();
-                    let end_idx = &end - BigInt::one();
-                    match (start_idx.to_usize(), end_idx.to_usize()) {
-                        (Some(si), Some(ei))
-                            if !start_idx.is_negative() && end_idx >= start_idx && ei < s.len() =>
-                        {
-                            Ok(Value::String(s[si..=ei].to_string()))
-                        }
-                        _ => Err(runtime_err("Invalid substring indices", span, &env)),
-                    }
-                } else {
-                    Err(runtime_err("Invalid substring arguments", span, &env))
-                }
-            }
-            "LENGTH" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("LENGTH requires one argument", span, &env));
-                }
-                let arg = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match arg {
-                    Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
-                    Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
-                    _ => Err(runtime_err(
-                        "LENGTH requires a list or string argument",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "REMOVE" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("REMOVE requires two arguments", span, &env));
-                }
-                let synth = Spanned::new(
-                    AstNode::Remove(Box::new(args[0].clone()), Box::new(args[1].clone())),
-                    span,
-                );
-                evaluate_node(&synth, Rc::clone(&env), debug)
-            }
-            "APPEND" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("APPEND requires two arguments", span, &env));
-                }
-                let synth = Spanned::new(
-                    AstNode::Append(Box::new(args[0].clone()), Box::new(args[1].clone())),
-                    span,
-                );
-                evaluate_node(&synth, Rc::clone(&env), debug)
-            }
-            "INSERT" => {
-                if args.len() != 3 {
-                    return Err(runtime_err("INSERT requires three arguments", span, &env));
-                }
-                let synth = Spanned::new(
-                    AstNode::Insert(
-                        Box::new(args[0].clone()),
-                        Box::new(args[1].clone()),
-                        Box::new(args[2].clone()),
-                    ),
-                    span,
-                );
-                evaluate_node(&synth, Rc::clone(&env), debug)
-            }
-            "ABS" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("ABS requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match x {
-                    Value::Integer(n) => Ok(Value::Integer(n.abs())),
-                    Value::Float(f) => Ok(Value::Float(f.abs())),
-                    _ => Err(runtime_err("ABS requires a numeric argument", span, &env)),
-                }
-            }
-            "CEIL" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("CEIL requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match x {
-                    Value::Float(f) => Ok(Value::Integer(BigInt::from(f.ceil() as i64))),
-                    Value::Integer(n) => Ok(Value::Integer(n)),
-                    _ => Err(runtime_err("CEIL requires a numeric argument", span, &env)),
-                }
-            }
-            "FLOOR" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("FLOOR requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match x {
-                    Value::Float(f) => Ok(Value::Integer(BigInt::from(f.floor() as i64))),
-                    Value::Integer(n) => Ok(Value::Integer(n)),
-                    _ => Err(runtime_err("FLOOR requires a numeric argument", span, &env)),
-                }
-            }
-            "POW" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("POW requires two arguments", span, &env));
-                }
-                let base = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let exponent = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (base, exponent) {
-                    (Value::Integer(a), Value::Integer(b)) => match b.to_u32() {
-                        Some(exp) => Ok(Value::Integer(a.pow(exp))),
-                        None => {
-                            let af = bigint_to_f64(&a);
-                            let bf = bigint_to_f64(&b);
-                            Ok(Value::Float(af.powf(bf)))
-                        }
-                    },
-                    (Value::Float(a), Value::Integer(b)) => match b.to_i32() {
-                        Some(exp) => Ok(Value::Float(a.powi(exp))),
-                        None => Ok(Value::Float(a.powf(bigint_to_f64(&b)))),
-                    },
-                    (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
-                    (Value::Integer(a), Value::Float(b)) => {
-                        Ok(Value::Float(bigint_to_f64(&a).powf(b)))
-                    }
-                    _ => Err(runtime_err("POW requires numeric arguments", span, &env)),
-                }
-            }
-            "SQRT" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("SQRT requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match x {
-                    Value::Integer(n) => Ok(Value::Float(bigint_to_f64(&n).sqrt())),
-                    Value::Float(f) => Ok(Value::Float(f.sqrt())),
-                    _ => Err(runtime_err("SQRT requires a numeric argument", span, &env)),
-                }
-            }
-            "SIN" => eval_single_num_fn(args, &env, span, debug, "SIN", |v| v.sin()),
-            "COS" => eval_single_num_fn(args, &env, span, debug, "COS", |v| v.cos()),
-            "TAN" => eval_single_num_fn(args, &env, span, debug, "TAN", |v| v.tan()),
-            "ASIN" => eval_single_num_fn(args, &env, span, debug, "ASIN", |v| v.asin()),
-            "ACOS" => eval_single_num_fn(args, &env, span, debug, "ACOS", |v| v.acos()),
-            "ATAN" => eval_single_num_fn(args, &env, span, debug, "ATAN", |v| v.atan()),
-            "EXP" => eval_single_num_fn(args, &env, span, debug, "EXP", |v| v.exp()),
-            "LOG" | "NLOG" => eval_single_num_fn(args, &env, span, debug, "LOG", |v| v.ln()),
-            "LOGTEN" => eval_single_num_fn(args, &env, span, debug, "LOGTEN", |v| v.log10()),
-            "LOGTWO" => eval_single_num_fn(args, &env, span, debug, "LOGTWO", |v| v.log2()),
-            "DEGREES" => eval_single_num_fn(args, &env, span, debug, "DEGREES", |v| v.to_degrees()),
-            "RADIANS" => eval_single_num_fn(args, &env, span, debug, "RADIANS", |v| v.to_radians()),
-            "GCD" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("GCD requires two arguments", span, &env));
-                }
-                let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (a, b) {
-                    (Value::Integer(m), Value::Integer(n)) => {
-                        Ok(Value::Integer(bigint_gcd(&m, &n)))
-                    }
-                    _ => Err(runtime_err("GCD requires integer arguments", span, &env)),
-                }
-            }
-            "FACTORIAL" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("FACTORIAL requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                if let Value::Integer(n) = x {
-                    Ok(Value::Integer(bigint_factorial(&n)))
-                } else {
-                    Err(runtime_err(
-                        "FACTORIAL requires an integer argument",
-                        span,
-                        &env,
-                    ))
-                }
-            }
-            "HYPOT" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("HYPOT requires two arguments", span, &env));
-                }
-                let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (a, b) {
-                    (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.hypot(y))),
-                    (Value::Integer(x), Value::Float(y)) => {
-                        Ok(Value::Float(bigint_to_f64(&x).hypot(y)))
-                    }
-                    (Value::Float(x), Value::Integer(y)) => {
-                        Ok(Value::Float(x.hypot(bigint_to_f64(&y))))
-                    }
-                    (Value::Integer(x), Value::Integer(y)) => {
-                        Ok(Value::Float(bigint_to_f64(&x).hypot(bigint_to_f64(&y))))
-                    }
-                    _ => Err(runtime_err("HYPOT requires numeric arguments", span, &env)),
-                }
-            }
-            "MIN" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("MIN requires two arguments", span, &env));
-                }
-                let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (a, b) {
-                    (Value::Integer(x), Value::Integer(y)) => {
-                        Ok(Value::Integer(if x <= y { x } else { y }))
-                    }
-                    (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.min(y))),
-                    (Value::Integer(x), Value::Float(y)) => {
-                        Ok(Value::Float(bigint_to_f64(&x).min(y)))
-                    }
-                    (Value::Float(x), Value::Integer(y)) => {
-                        Ok(Value::Float(x.min(bigint_to_f64(&y))))
-                    }
-                    _ => Err(runtime_err(
-                        "MIN requires two numeric arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "MAX" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("MAX requires two arguments", span, &env));
-                }
-                let a = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let b = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (a, b) {
-                    (Value::Integer(x), Value::Integer(y)) => {
-                        Ok(Value::Integer(if x >= y { x } else { y }))
-                    }
-                    (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.max(y))),
-                    (Value::Integer(x), Value::Float(y)) => {
-                        Ok(Value::Float(bigint_to_f64(&x).max(y)))
-                    }
-                    (Value::Float(x), Value::Integer(y)) => {
-                        Ok(Value::Float(x.max(bigint_to_f64(&y))))
-                    }
-                    _ => Err(runtime_err(
-                        "MAX requires two numeric arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "EXIT" => {
-                std::process::exit(0);
-            }
-            "ROUND" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("ROUND requires one argument", span, &env));
-                }
-                let x = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                match x {
-                    Value::Float(f) => Ok(Value::Integer(BigInt::from(f.round() as i64))),
-                    Value::Integer(n) => Ok(Value::Integer(n)),
-                    _ => Err(runtime_err("ROUND requires a numeric argument", span, &env)),
-                }
-            }
-            "SPLIT" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("SPLIT requires two arguments", span, &env));
-                }
-                let string_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let delimiter_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (string_val, delimiter_val) {
-                    (Value::String(s), Value::String(d)) => {
-                        let parts: Vec<Value> = s
-                            .split(&d)
-                            .map(|part| Value::String(part.to_string()))
-                            .collect();
-                        Ok(Value::List(parts))
-                    }
-                    _ => Err(runtime_err(
-                        "SPLIT requires two string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "TRIM" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("TRIM requires one argument", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                if let Value::String(s) = str_val {
-                    Ok(Value::String(s.trim().to_string()))
-                } else {
-                    Err(runtime_err("TRIM requires a string argument", span, &env))
-                }
-            }
-            "REPLACE" => {
-                if args.len() != 3 {
-                    return Err(runtime_err("REPLACE requires three arguments", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let from_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                let to_val = evaluate_node(&args[2], Rc::clone(&env), debug)?;
-                match (str_val, from_val, to_val) {
-                    (Value::String(s), Value::String(from), Value::String(to)) => {
-                        Ok(Value::String(s.replace(&from, &to)))
-                    }
-                    _ => Err(runtime_err(
-                        "REPLACE requires three string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "UPPERCASE" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("UPPERCASE requires one argument", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                if let Value::String(s) = str_val {
-                    Ok(Value::String(s.to_uppercase()))
-                } else {
-                    Err(runtime_err(
-                        "UPPERCASE requires a string argument",
-                        span,
-                        &env,
-                    ))
-                }
-            }
-            "LOWERCASE" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("LOWERCASE requires one argument", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                if let Value::String(s) = str_val {
-                    Ok(Value::String(s.to_lowercase()))
-                } else {
-                    Err(runtime_err(
-                        "LOWERCASE requires a string argument",
-                        span,
-                        &env,
-                    ))
-                }
-            }
-            "TIMESTAMP" => match args.len() {
-                0 => {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map_err(|e| runtime_err(e.to_string(), span, &env))?;
-                        let secs = now.as_secs() as f64;
-                        let nanos = now.subsec_nanos() as f64 / 1_000_000_000.0;
-                        Ok(Value::Float(secs + nanos))
-                    }
-
-                    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-                    {
-                        let unix_ms = date_now();
-                        let perf_time = get_high_precision_time();
-                        let fract_ms = perf_time % 1.0;
-                        let nanos = fract_ms * 1_000_000.0;
-                        let seconds = unix_ms / 1000.0;
-                        let seconds_int = seconds.floor();
-                        let millis_part = seconds - seconds_int;
-                        let timestamp = seconds_int + millis_part + (nanos / 1_000_000_000.0);
-                        Ok(Value::Float(timestamp))
-                    }
-
-                    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-                    {
-                        Err(runtime_err(
-                            "TIMESTAMP is not supported in this environment",
-                            span,
-                            &env,
-                        ))
-                    }
-                }
-                1 => {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        let datetime = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                        if let Value::String(dt) = datetime {
-                            use chrono::NaiveDateTime;
-                            match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
-                                Ok(dt) => {
-                                    let timestamp = dt.and_utc().timestamp() as f64;
-                                    let nanos = dt.and_utc().timestamp_subsec_nanos() as f64
-                                        / 1_000_000_000.0;
-                                    Ok(Value::Float(timestamp + nanos))
-                                }
-                                Err(e) => Err(runtime_err(
-                                    format!("Invalid datetime format: {}", e),
-                                    span,
-                                    &env,
-                                )),
-                            }
-                        } else {
-                            Err(runtime_err(
-                                "TIMESTAMP requires a datetime string",
-                                span,
-                                &env,
-                            ))
-                        }
-                    }
-
-                    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-                    {
-                        let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                        match timestamp {
-                            Value::Integer(ts) => {
-                                let js_timestamp = JsValue::from_f64((ts as f64) * 1000.0);
-                                let date = js_sys::Date::new(&js_timestamp);
-                                let year = date.get_utc_full_year();
-                                let month = date.get_utc_month() + 1;
-                                let day = date.get_utc_date();
-                                let hours = date.get_utc_hours();
-                                let minutes = date.get_utc_minutes();
-                                let seconds = date.get_utc_seconds();
-                                let formatted = format!(
-                                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                                    year, month, day, hours, minutes, seconds
-                                );
-                                Ok(Value::String(formatted))
-                            }
-                            Value::Float(ts) => {
-                                let js_timestamp = JsValue::from_f64(ts * 1000.0);
-                                let date = js_sys::Date::new(&js_timestamp);
-                                let year = date.get_utc_full_year();
-                                let month = date.get_utc_month() + 1;
-                                let day = date.get_utc_date();
-                                let hours = date.get_utc_hours();
-                                let minutes = date.get_utc_minutes();
-                                let seconds = date.get_utc_seconds();
-                                let formatted = format!(
-                                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                                    year, month, day, hours, minutes, seconds
-                                );
-                                Ok(Value::String(formatted))
-                            }
-                            _ => Err(runtime_err("TIME requires a numeric timestamp", span, &env)),
-                        }
-                    }
-
-                    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-                    {
-                        Err(runtime_err(
-                            "TIMESTAMP is not supported in this environment",
-                            span,
-                            &env,
-                        ))
-                    }
-                }
-                _ => Err(runtime_err(
-                    "TIMESTAMP requires 0 or 1 arguments",
+            if env.borrow().stack_depth() >= MAX_STACK_DEPTH {
+                return Err(runtime_err(
+                    "Stack overflow: maximum recursion depth exceeded",
                     span,
                     &env,
-                )),
-            },
-            "TIME" => {
-                if args.len() != 1 {
-                    return Err(runtime_err("TIME requires one argument", span, &env));
-                }
-
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    match timestamp {
-                        Value::Integer(ts) => {
-                            use chrono::{TimeZone, Utc};
-                            let ts_i64 = ts.to_i64().ok_or_else(|| {
-                                runtime_err("Timestamp value too large", span, &env)
-                            })?;
-                            let dt = Utc
-                                .timestamp_opt(ts_i64, 0)
-                                .single()
-                                .ok_or_else(|| runtime_err("Invalid timestamp", span, &env))?;
-                            Ok(Value::String(dt.naive_local().to_string()))
-                        }
-                        Value::Float(ts) => {
-                            use chrono::{TimeZone, Utc};
-                            let secs = ts.floor() as i64;
-                            let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
-                            let dt = Utc
-                                .timestamp_opt(secs, nanos)
-                                .single()
-                                .ok_or_else(|| runtime_err("Invalid timestamp", span, &env))?;
-                            Ok(Value::String(dt.naive_local().to_string()))
-                        }
-                        _ => Err(runtime_err("TIME requires a numeric timestamp", span, &env)),
-                    }
-                }
-
-                #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
-                {
-                    let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    match timestamp {
-                        Value::Integer(ts) => {
-                            let js_timestamp = JsValue::from_f64((ts as f64) * 1000.0);
-                            let date = js_sys::Date::new(&js_timestamp);
-                            let year = date.get_utc_full_year();
-                            let month = date.get_utc_month() + 1;
-                            let day = date.get_utc_date();
-                            let hours = date.get_utc_hours();
-                            let minutes = date.get_utc_minutes();
-                            let seconds = date.get_utc_seconds();
-                            let formatted = format!(
-                                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                                year, month, day, hours, minutes, seconds
-                            );
-                            Ok(Value::String(formatted))
-                        }
-                        Value::Float(ts) => {
-                            let js_timestamp = JsValue::from_f64(ts * 1000.0);
-                            let date = js_sys::Date::new(&js_timestamp);
-                            let year = date.get_utc_full_year();
-                            let month = date.get_utc_month() + 1;
-                            let day = date.get_utc_date();
-                            let hours = date.get_utc_hours();
-                            let minutes = date.get_utc_minutes();
-                            let seconds = date.get_utc_seconds();
-                            let formatted = format!(
-                                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                                year, month, day, hours, minutes, seconds
-                            );
-                            Ok(Value::String(formatted))
-                        }
-                        _ => Err(runtime_err("TIME requires a numeric timestamp", span, &env)),
-                    }
-                }
-
-                #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-                {
-                    Err(runtime_err(
-                        "TIME is not supported in this environment",
-                        span,
-                        &env,
-                    ))
-                }
+                ));
             }
-            "TIMEZONE" => {
-                if args.len() != 2 {
-                    return Err(runtime_err(
-                        "TIMEZONE requires two arguments: timestamp and timezone",
-                        span,
-                        &env,
-                    ));
-                }
-                let timestamp = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let tz_name = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-
-                if let Value::String(tz) = tz_name {
-                    use chrono::{TimeZone, Utc};
-                    use chrono_tz::Tz;
-
-                    let dt_utc = match timestamp {
-                        Value::Integer(ts) => {
-                            let ts_i64 = ts.to_i64().ok_or_else(|| {
-                                runtime_err("Timestamp value too large", span, &env)
-                            })?;
-                            Utc.timestamp_opt(ts_i64, 0)
-                                .single()
-                                .ok_or_else(|| runtime_err("Invalid timestamp", span, &env))?
-                        }
-                        Value::Float(ts) => {
-                            let secs = ts.floor() as i64;
-                            let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
-                            Utc.timestamp_opt(secs, nanos)
-                                .single()
-                                .ok_or_else(|| runtime_err("Invalid timestamp", span, &env))?
-                        }
-                        _ => {
-                            return Err(runtime_err(
-                                "TIMEZONE requires a numeric timestamp",
-                                span,
-                                &env,
-                            ));
-                        }
-                    };
-
-                    let tz: Tz = tz.parse().map_err(|_| {
-                        runtime_err(format!("Invalid timezone: {}", tz), span, &env)
-                    })?;
-
-                    let dt_tz = dt_utc.with_timezone(&tz);
-                    Ok(Value::String(dt_tz.naive_local().to_string()))
-                } else {
-                    Err(runtime_err(
-                        "TIMEZONE requires a timezone name (string)",
-                        span,
-                        &env,
-                    ))
-                }
+            let procedure = env.borrow().get_procedure(name).ok_or_else(|| {
+                runtime_err(format!("Procedure '{}' not found", name), span, &env)
+            })?;
+            let local_env = Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
+            let (params, ref body) = procedure;
+            for (param, arg) in params.iter().zip(args) {
+                let arg_value = evaluate_node(arg, Rc::clone(&env), debug)?;
+                local_env.borrow_mut().set(param.clone(), arg_value);
             }
-            "TIMEZONES" => {
-                if !args.is_empty() {
-                    return Err(runtime_err("TIMEZONES takes no arguments", span, &env));
-                }
-                use chrono_tz::TZ_VARIANTS;
-                let tzs: Vec<Value> = TZ_VARIANTS
-                    .iter()
-                    .map(|tz| Value::String(tz.name().to_string()))
-                    .collect();
-                Ok(Value::List(tzs))
+            env.borrow().push_frame(StackFrame {
+                name: name.clone(),
+                span,
+            });
+            let body_result = evaluate_node(body, Rc::clone(&local_env), debug);
+            env.borrow().pop_frame();
+            env.borrow_mut().output.push_str(&local_env.borrow().output);
+            match body_result {
+                Err(Interruption::Return(val)) => Ok(val),
+                other => other,
             }
-            "MILLITIME" => {
-                if !args.is_empty() {
-                    return Err(runtime_err("MILLITIME takes no arguments", span, &env));
-                }
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(|e| runtime_err(e.to_string(), span, &env))?;
-                let millis = now.as_millis();
-                Ok(Value::Integer(BigInt::from(millis)))
-            }
-            "CONTAINS" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("CONTAINS requires two arguments", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let text_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (str_val, text_val) {
-                    (Value::String(s), Value::String(t)) => Ok(Value::Boolean(s.contains(&t))),
-                    _ => Err(runtime_err(
-                        "CONTAINS requires two string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "FIND" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("FIND requires two arguments", span, &env));
-                }
-                let str_val = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let text_val = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (str_val, text_val) {
-                    (Value::String(s), Value::String(t)) => match s.find(&t) {
-                        Some(index) => Ok(Value::Integer(BigInt::from(index + 1))),
-                        None => Ok(Value::Integer(BigInt::from(-1))),
-                    },
-                    _ => Err(runtime_err(
-                        "FIND requires two string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "RANGE" => match args.len() {
-                1 => {
-                    let end = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    if let Value::Integer(end_val) = end {
-                        if end_val < BigInt::one() {
-                            return Err(runtime_err(
-                                "RANGE end value must be greater than 0",
-                                span,
-                                &env,
-                            ));
-                        }
-                        let list = bigint_range_inclusive(BigInt::one(), end_val);
-                        Ok(Value::List(list))
-                    } else {
-                        Err(runtime_err("RANGE requires integer arguments", span, &env))
-                    }
-                }
-                2 => {
-                    let start = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                    let end = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                    if let (Value::Integer(start_val), Value::Integer(end_val)) = (start, end) {
-                        if end_val < start_val {
-                            return Err(runtime_err(
-                                "RANGE end value must be greater than or equal to start value",
-                                span,
-                                &env,
-                            ));
-                        }
-                        let list = bigint_range_inclusive(start_val, end_val);
-                        Ok(Value::List(list))
-                    } else {
-                        Err(runtime_err("RANGE requires integer arguments", span, &env))
-                    }
-                }
-                _ => Err(runtime_err(
-                    "RANGE requires one or two arguments",
-                    span,
-                    &env,
-                )),
-            },
-            "STARTSWITH" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("STARTSWITH requires two arguments", span, &env));
-                }
-                let fullstring = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let substring = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (fullstring, substring) {
-                    (Value::String(s), Value::String(sub)) => {
-                        Ok(Value::Boolean(s.starts_with(&sub)))
-                    }
-                    _ => Err(runtime_err(
-                        "STARTSWITH requires two string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            "ENDSWITH" => {
-                if args.len() != 2 {
-                    return Err(runtime_err("ENDSWITH requires two arguments", span, &env));
-                }
-                let fullstring = evaluate_node(&args[0], Rc::clone(&env), debug)?;
-                let substring = evaluate_node(&args[1], Rc::clone(&env), debug)?;
-                match (fullstring, substring) {
-                    (Value::String(s), Value::String(sub)) => Ok(Value::Boolean(s.ends_with(&sub))),
-                    _ => Err(runtime_err(
-                        "ENDSWITH requires two string arguments",
-                        span,
-                        &env,
-                    )),
-                }
-            }
-            _ => {
-                if env.borrow().stack_depth() >= MAX_STACK_DEPTH {
-                    return Err(runtime_err(
-                        "Stack overflow: maximum recursion depth exceeded",
-                        span,
-                        &env,
-                    ));
-                }
-
-                let procedure = env.borrow().get_procedure(name).ok_or_else(|| {
-                    runtime_err(format!("Procedure '{}' not found", name), span, &env)
-                })?;
-
-                let local_env =
-                    Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
-
-                let (params, ref body) = procedure;
-                for (param, arg) in params.iter().zip(args) {
-                    let arg_value = evaluate_node(arg, Rc::clone(&env), debug)?;
-                    local_env.borrow_mut().set(param.clone(), arg_value);
-                }
-
-                env.borrow().push_frame(StackFrame {
-                    name: name.clone(),
-                    span,
-                });
-
-                let body_result = evaluate_node(body, Rc::clone(&local_env), debug);
-
-                env.borrow().pop_frame();
-                env.borrow_mut().output.push_str(&local_env.borrow().output);
-
-                match body_result {
-                    Err(Interruption::Return(val)) => Ok(val),
-                    other => other,
-                }
-            }
-        },
+        }
 
         AstNode::ListAccess(list, index) => {
             let current_value = evaluate_node(list, Rc::clone(&env), debug)?;
@@ -1266,7 +484,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             let new_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &list.node {
-                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
+                let mut elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
                     elements
                 } else {
                     return Err(runtime_err(
@@ -1280,11 +498,10 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     let idx = &i - BigInt::one();
                     match idx.to_usize() {
                         Some(uidx) if uidx < elements.len() => {
-                            let mut new_elements = elements.clone();
-                            new_elements[uidx] = new_val.clone();
-                            env.borrow_mut()
-                                .set(name.clone(), Value::List(new_elements));
-                            Ok(new_val)
+                            let ret = new_val.clone();
+                            elements[uidx] = new_val;
+                            env.borrow_mut().set(name.clone(), Value::List(elements));
+                            Ok(ret)
                         }
                         _ => Err(runtime_err("List index out of bounds", span, &env)),
                     }
@@ -1303,15 +520,17 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     {
                         let jdx = &j - BigInt::one();
                         if let Some(ujdx) = jdx.to_usize()
-                            && let Value::List(mut inner_elements) = elements[uidx].clone()
+                            && let Value::List(mut inner_elements) =
+                                std::mem::replace(&mut elements[uidx], Value::Unit)
                             && ujdx < inner_elements.len()
                         {
-                            inner_elements[ujdx] = new_val.clone();
+                            let ret = new_val.clone();
+                            inner_elements[ujdx] = new_val;
                             elements[uidx] = Value::List(inner_elements);
 
                             if let AstNode::Identifier(name) = &inner_list.node {
                                 env.borrow_mut().set(name.clone(), Value::List(elements));
-                                return Ok(new_val);
+                                return Ok(ret);
                             }
                         }
                     }
@@ -1427,7 +646,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::FormattedString(s, expressions) => {
-            let mut result = String::new();
+            let mut result = String::with_capacity(s.len());
             let mut placeholders = s.split("{}");
             let mut expr_iter = expressions.iter();
 
@@ -1700,6 +919,999 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
     }
 }
 
+// skipcq: RS-R1000
+fn eval_builtin(
+    name: &str,
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> Option<EvalResult> {
+    match name {
+        "SLEEP" => Some(eval_builtin_sleep(args, env, span, debug)),
+        "CONCAT" => Some(eval_builtin_concat(args, env, span, debug)),
+        "SUBSTRING" => Some(eval_builtin_substring(args, env, span, debug)),
+        "LENGTH" => Some(eval_builtin_length(args, env, span, debug)),
+        "REMOVE" => Some(eval_builtin_remove(args, env, span, debug)),
+        "APPEND" => Some(eval_builtin_append(args, env, span, debug)),
+        "INSERT" => Some(eval_builtin_insert(args, env, span, debug)),
+        "ABS" => Some(eval_builtin_abs(args, env, span, debug)),
+        "CEIL" => Some(eval_builtin_ceil(args, env, span, debug)),
+        "FLOOR" => Some(eval_builtin_floor(args, env, span, debug)),
+        "POW" => Some(eval_builtin_pow(args, env, span, debug)),
+        "SQRT" => Some(eval_builtin_sqrt(args, env, span, debug)),
+        "SIN" => Some(eval_single_num_fn(args, env, span, debug, "SIN", f64::sin)),
+        "COS" => Some(eval_single_num_fn(args, env, span, debug, "COS", f64::cos)),
+        "TAN" => Some(eval_single_num_fn(args, env, span, debug, "TAN", f64::tan)),
+        "ASIN" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "ASIN",
+            f64::asin,
+        )),
+        "ACOS" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "ACOS",
+            f64::acos,
+        )),
+        "ATAN" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "ATAN",
+            f64::atan,
+        )),
+        "EXP" => Some(eval_single_num_fn(args, env, span, debug, "EXP", f64::exp)),
+        "LOG" | "NLOG" => Some(eval_single_num_fn(args, env, span, debug, "LOG", f64::ln)),
+        "LOGTEN" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "LOGTEN",
+            f64::log10,
+        )),
+        "LOGTWO" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "LOGTWO",
+            f64::log2,
+        )),
+        "DEGREES" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "DEGREES",
+            f64::to_degrees,
+        )),
+        "RADIANS" => Some(eval_single_num_fn(
+            args,
+            env,
+            span,
+            debug,
+            "RADIANS",
+            f64::to_radians,
+        )),
+        "GCD" => Some(eval_builtin_gcd(args, env, span, debug)),
+        "FACTORIAL" => Some(eval_builtin_factorial(args, env, span, debug)),
+        "HYPOT" => Some(eval_builtin_hypot(args, env, span, debug)),
+        "MIN" => Some(eval_builtin_min(args, env, span, debug)),
+        "MAX" => Some(eval_builtin_max(args, env, span, debug)),
+        "EXIT" => std::process::exit(0),
+        "ROUND" => Some(eval_builtin_round(args, env, span, debug)),
+        "SPLIT" => Some(eval_builtin_split(args, env, span, debug)),
+        "TRIM" => Some(eval_builtin_trim(args, env, span, debug)),
+        "REPLACE" => Some(eval_builtin_replace(args, env, span, debug)),
+        "UPPERCASE" => Some(eval_builtin_uppercase(args, env, span, debug)),
+        "LOWERCASE" => Some(eval_builtin_lowercase(args, env, span, debug)),
+        "TIMESTAMP" => Some(eval_builtin_timestamp(args, env, span, debug)),
+        "TIME" => Some(eval_builtin_time(args, env, span, debug)),
+        "TIMEZONE" => Some(eval_builtin_timezone(args, env, span, debug)),
+        "TIMEZONES" => Some(eval_builtin_timezones(args, env, span)),
+        "MILLITIME" => Some(eval_builtin_millitime(args, env, span)),
+        "CONTAINS" => Some(eval_builtin_contains(args, env, span, debug)),
+        "FIND" => Some(eval_builtin_find(args, env, span, debug)),
+        "RANGE" => Some(eval_builtin_range(args, env, span, debug)),
+        "STARTSWITH" => Some(eval_builtin_startswith(args, env, span, debug)),
+        "ENDSWITH" => Some(eval_builtin_endswith(args, env, span, debug)),
+        _ => None,
+    }
+}
+
+fn eval_builtin_sleep(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("SLEEP requires one argument", span, env));
+    }
+    io::stdout().flush().unwrap();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let seconds = evaluate_node(&args[0], Rc::clone(env), debug)?;
+        match seconds {
+            Value::Integer(n) => {
+                let secs = n.to_u64().unwrap_or(0);
+                thread::sleep(Duration::from_secs(secs));
+                Ok(Value::Unit)
+            }
+            Value::Float(f) => {
+                thread::sleep(Duration::from_secs_f64(f));
+                Ok(Value::Unit)
+            }
+            _ => Err(runtime_err("SLEEP requires a numeric argument", span, env)),
+        }
+    }
+    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+    {
+        let _seconds = evaluate_node(&args[0], Rc::clone(env), debug)?;
+        log(
+            "SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.",
+        );
+        return Ok(Value::Unit);
+    }
+    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+    {
+        Err(runtime_err(
+            "SLEEP is not supported in this environment",
+            span,
+            env,
+        ))
+    }
+}
+
+fn eval_builtin_concat(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("CONCAT requires two arguments", span, env));
+    }
+    let s1 = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let s2 = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (s1, s2) {
+        (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+        _ => Err(runtime_err("CONCAT requires string arguments", span, env)),
+    }
+}
+
+fn eval_builtin_substring(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 3 {
+        return Err(runtime_err("SUBSTRING requires three arguments", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let start_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    let end_val = evaluate_node(&args[2], Rc::clone(env), debug)?;
+    if let (Value::String(s), Value::Integer(start), Value::Integer(end)) =
+        (str_val, start_val, end_val)
+    {
+        let start_idx = &start - BigInt::one();
+        let end_idx = &end - BigInt::one();
+        match (start_idx.to_usize(), end_idx.to_usize()) {
+            (Some(si), Some(ei))
+                if !start_idx.is_negative() && end_idx >= start_idx && ei < s.len() =>
+            {
+                Ok(Value::String(s[si..=ei].to_string()))
+            }
+            _ => Err(runtime_err("Invalid substring indices", span, env)),
+        }
+    } else {
+        Err(runtime_err("Invalid substring arguments", span, env))
+    }
+}
+
+fn eval_builtin_length(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("LENGTH requires one argument", span, env));
+    }
+    let arg = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match arg {
+        Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
+        Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
+        _ => Err(runtime_err(
+            "LENGTH requires a list or string argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_remove(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("REMOVE requires two arguments", span, env));
+    }
+    let synth = Spanned::new(
+        AstNode::Remove(Box::new(args[0].clone()), Box::new(args[1].clone())),
+        span,
+    );
+    evaluate_node(&synth, Rc::clone(env), debug)
+}
+
+fn eval_builtin_append(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("APPEND requires two arguments", span, env));
+    }
+    let synth = Spanned::new(
+        AstNode::Append(Box::new(args[0].clone()), Box::new(args[1].clone())),
+        span,
+    );
+    evaluate_node(&synth, Rc::clone(env), debug)
+}
+
+fn eval_builtin_insert(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 3 {
+        return Err(runtime_err("INSERT requires three arguments", span, env));
+    }
+    let synth = Spanned::new(
+        AstNode::Insert(
+            Box::new(args[0].clone()),
+            Box::new(args[1].clone()),
+            Box::new(args[2].clone()),
+        ),
+        span,
+    );
+    evaluate_node(&synth, Rc::clone(env), debug)
+}
+
+fn eval_builtin_abs(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("ABS requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Integer(n) => Ok(Value::Integer(n.abs())),
+        Value::Float(f) => Ok(Value::Float(f.abs())),
+        _ => Err(runtime_err("ABS requires a numeric argument", span, env)),
+    }
+}
+
+fn eval_builtin_ceil(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("CEIL requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.ceil() as i64))),
+        Value::Integer(n) => Ok(Value::Integer(n)),
+        _ => Err(runtime_err("CEIL requires a numeric argument", span, env)),
+    }
+}
+
+fn eval_builtin_floor(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("FLOOR requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.floor() as i64))),
+        Value::Integer(n) => Ok(Value::Integer(n)),
+        _ => Err(runtime_err("FLOOR requires a numeric argument", span, env)),
+    }
+}
+
+fn eval_builtin_pow(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("POW requires two arguments", span, env));
+    }
+    let base = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let exponent = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (base, exponent) {
+        (Value::Integer(a), Value::Integer(b)) => match b.to_u32() {
+            Some(exp) => Ok(Value::Integer(a.pow(exp))),
+            None => Ok(Value::Float(bigint_to_f64(&a).powf(bigint_to_f64(&b)))),
+        },
+        (Value::Float(a), Value::Integer(b)) => match b.to_i32() {
+            Some(exp) => Ok(Value::Float(a.powi(exp))),
+            None => Ok(Value::Float(a.powf(bigint_to_f64(&b)))),
+        },
+        (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
+        (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(bigint_to_f64(&a).powf(b))),
+        _ => Err(runtime_err("POW requires numeric arguments", span, env)),
+    }
+}
+
+fn eval_builtin_sqrt(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("SQRT requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Integer(n) => Ok(Value::Float(bigint_to_f64(&n).sqrt())),
+        Value::Float(f) => Ok(Value::Float(f.sqrt())),
+        _ => Err(runtime_err("SQRT requires a numeric argument", span, env)),
+    }
+}
+
+fn eval_builtin_gcd(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("GCD requires two arguments", span, env));
+    }
+    let a = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let b = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (a, b) {
+        (Value::Integer(m), Value::Integer(n)) => Ok(Value::Integer(bigint_gcd(&m, &n))),
+        _ => Err(runtime_err("GCD requires integer arguments", span, env)),
+    }
+}
+
+fn eval_builtin_factorial(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("FACTORIAL requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Integer(n) => Ok(Value::Integer(bigint_factorial(&n))),
+        _ => Err(runtime_err(
+            "FACTORIAL requires an integer argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_hypot(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("HYPOT requires two arguments", span, env));
+    }
+    let a = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let b = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (a, b) {
+        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.hypot(y))),
+        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float(bigint_to_f64(&x).hypot(y))),
+        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.hypot(bigint_to_f64(&y)))),
+        (Value::Integer(x), Value::Integer(y)) => {
+            Ok(Value::Float(bigint_to_f64(&x).hypot(bigint_to_f64(&y))))
+        }
+        _ => Err(runtime_err("HYPOT requires numeric arguments", span, env)),
+    }
+}
+
+fn eval_builtin_min(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("MIN requires two arguments", span, env));
+    }
+    let a = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let b = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(if x <= y { x } else { y })),
+        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.min(y))),
+        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float(bigint_to_f64(&x).min(y))),
+        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.min(bigint_to_f64(&y)))),
+        _ => Err(runtime_err("MIN requires two numeric arguments", span, env)),
+    }
+}
+
+fn eval_builtin_max(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("MAX requires two arguments", span, env));
+    }
+    let a = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let b = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(if x >= y { x } else { y })),
+        (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x.max(y))),
+        (Value::Integer(x), Value::Float(y)) => Ok(Value::Float(bigint_to_f64(&x).max(y))),
+        (Value::Float(x), Value::Integer(y)) => Ok(Value::Float(x.max(bigint_to_f64(&y)))),
+        _ => Err(runtime_err("MAX requires two numeric arguments", span, env)),
+    }
+}
+
+fn eval_builtin_round(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("ROUND requires one argument", span, env));
+    }
+    let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match x {
+        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.round() as i64))),
+        Value::Integer(n) => Ok(Value::Integer(n)),
+        _ => Err(runtime_err("ROUND requires a numeric argument", span, env)),
+    }
+}
+
+fn eval_builtin_split(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("SPLIT requires two arguments", span, env));
+    }
+    let string_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let delimiter_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (string_val, delimiter_val) {
+        (Value::String(s), Value::String(d)) => {
+            let parts: Vec<Value> = s
+                .split(&d)
+                .map(|part| Value::String(part.to_string()))
+                .collect();
+            Ok(Value::List(parts))
+        }
+        _ => Err(runtime_err(
+            "SPLIT requires two string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_trim(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("TRIM requires one argument", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match str_val {
+        Value::String(s) => Ok(Value::String(s.trim().to_string())),
+        _ => Err(runtime_err("TRIM requires a string argument", span, env)),
+    }
+}
+
+fn eval_builtin_replace(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 3 {
+        return Err(runtime_err("REPLACE requires three arguments", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let from_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    let to_val = evaluate_node(&args[2], Rc::clone(env), debug)?;
+    match (str_val, from_val, to_val) {
+        (Value::String(s), Value::String(from), Value::String(to)) => {
+            Ok(Value::String(s.replace(&from, &to)))
+        }
+        _ => Err(runtime_err(
+            "REPLACE requires three string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_uppercase(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("UPPERCASE requires one argument", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match str_val {
+        Value::String(s) => Ok(Value::String(s.to_uppercase())),
+        _ => Err(runtime_err(
+            "UPPERCASE requires a string argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_lowercase(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("LOWERCASE requires one argument", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match str_val {
+        Value::String(s) => Ok(Value::String(s.to_lowercase())),
+        _ => Err(runtime_err(
+            "LOWERCASE requires a string argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_timestamp(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    match args.len() {
+        0 => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|e| runtime_err(e.to_string(), span, env))?;
+                let secs = now.as_secs() as f64;
+                let nanos = now.subsec_nanos() as f64 / 1_000_000_000.0;
+                Ok(Value::Float(secs + nanos))
+            }
+            #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+            {
+                let unix_ms = date_now();
+                let perf_time = get_high_precision_time();
+                let fract_ms = perf_time % 1.0;
+                let nanos = fract_ms * 1_000_000.0;
+                let seconds = unix_ms / 1000.0;
+                let seconds_int = seconds.floor();
+                let millis_part = seconds - seconds_int;
+                let timestamp = seconds_int + millis_part + (nanos / 1_000_000_000.0);
+                return Ok(Value::Float(timestamp));
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+            Err(runtime_err(
+                "TIMESTAMP is not supported in this environment",
+                span,
+                env,
+            ))
+        }
+        1 => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let datetime = evaluate_node(&args[0], Rc::clone(env), debug)?;
+                if let Value::String(dt) = datetime {
+                    use chrono::NaiveDateTime;
+                    match NaiveDateTime::parse_from_str(&dt, "%Y-%m-%d %H:%M:%S%.f") {
+                        Ok(dt) => {
+                            let timestamp = dt.and_utc().timestamp() as f64;
+                            let nanos =
+                                dt.and_utc().timestamp_subsec_nanos() as f64 / 1_000_000_000.0;
+                            Ok(Value::Float(timestamp + nanos))
+                        }
+                        Err(e) => Err(runtime_err(
+                            format!("Invalid datetime format: {}", e),
+                            span,
+                            env,
+                        )),
+                    }
+                } else {
+                    Err(runtime_err(
+                        "TIMESTAMP requires a datetime string",
+                        span,
+                        env,
+                    ))
+                }
+            }
+            #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+            {
+                let timestamp = evaluate_node(&args[0], Rc::clone(env), debug)?;
+                return match timestamp {
+                    Value::Integer(ts) => {
+                        let js_timestamp = JsValue::from_f64(bigint_to_f64(&ts) * 1000.0);
+                        let date = js_sys::Date::new(&js_timestamp);
+                        Ok(Value::String(format!(
+                            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                            date.get_utc_full_year(),
+                            date.get_utc_month() + 1,
+                            date.get_utc_date(),
+                            date.get_utc_hours(),
+                            date.get_utc_minutes(),
+                            date.get_utc_seconds()
+                        )))
+                    }
+                    Value::Float(ts) => {
+                        let js_timestamp = JsValue::from_f64(ts * 1000.0);
+                        let date = js_sys::Date::new(&js_timestamp);
+                        Ok(Value::String(format!(
+                            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                            date.get_utc_full_year(),
+                            date.get_utc_month() + 1,
+                            date.get_utc_date(),
+                            date.get_utc_hours(),
+                            date.get_utc_minutes(),
+                            date.get_utc_seconds()
+                        )))
+                    }
+                    _ => Err(runtime_err("TIME requires a numeric timestamp", span, env)),
+                };
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+            Err(runtime_err(
+                "TIMESTAMP is not supported in this environment",
+                span,
+                env,
+            ))
+        }
+        _ => Err(runtime_err(
+            "TIMESTAMP requires 0 or 1 arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_time(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("TIME requires one argument", span, env));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let timestamp = evaluate_node(&args[0], Rc::clone(env), debug)?;
+        match timestamp {
+            Value::Integer(ts) => {
+                use chrono::{TimeZone, Utc};
+                let ts_i64 = ts
+                    .to_i64()
+                    .ok_or_else(|| runtime_err("Timestamp value too large", span, env))?;
+                let dt = Utc
+                    .timestamp_opt(ts_i64, 0)
+                    .single()
+                    .ok_or_else(|| runtime_err("Invalid timestamp", span, env))?;
+                Ok(Value::String(dt.naive_local().to_string()))
+            }
+            Value::Float(ts) => {
+                use chrono::{TimeZone, Utc};
+                let secs = ts.floor() as i64;
+                let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
+                let dt = Utc
+                    .timestamp_opt(secs, nanos)
+                    .single()
+                    .ok_or_else(|| runtime_err("Invalid timestamp", span, env))?;
+                Ok(Value::String(dt.naive_local().to_string()))
+            }
+            _ => Err(runtime_err("TIME requires a numeric timestamp", span, env)),
+        }
+    }
+    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+    {
+        let timestamp = evaluate_node(&args[0], Rc::clone(env), debug)?;
+        return match timestamp {
+            Value::Integer(ts) => {
+                let js_timestamp = JsValue::from_f64(bigint_to_f64(&ts) * 1000.0);
+                let date = js_sys::Date::new(&js_timestamp);
+                Ok(Value::String(format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                    date.get_utc_full_year(),
+                    date.get_utc_month() + 1,
+                    date.get_utc_date(),
+                    date.get_utc_hours(),
+                    date.get_utc_minutes(),
+                    date.get_utc_seconds()
+                )))
+            }
+            Value::Float(ts) => {
+                let js_timestamp = JsValue::from_f64(ts * 1000.0);
+                let date = js_sys::Date::new(&js_timestamp);
+                Ok(Value::String(format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                    date.get_utc_full_year(),
+                    date.get_utc_month() + 1,
+                    date.get_utc_date(),
+                    date.get_utc_hours(),
+                    date.get_utc_minutes(),
+                    date.get_utc_seconds()
+                )))
+            }
+            _ => Err(runtime_err("TIME requires a numeric timestamp", span, env)),
+        };
+    }
+    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
+    Err(runtime_err(
+        "TIME is not supported in this environment",
+        span,
+        env,
+    ))
+}
+
+fn eval_builtin_timezone(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err(
+            "TIMEZONE requires two arguments: timestamp and timezone",
+            span,
+            env,
+        ));
+    }
+    let timestamp = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let tz_name = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    if let Value::String(tz) = tz_name {
+        use chrono::{TimeZone, Utc};
+        use chrono_tz::Tz;
+        let dt_utc = match timestamp {
+            Value::Integer(ts) => {
+                let ts_i64 = ts
+                    .to_i64()
+                    .ok_or_else(|| runtime_err("Timestamp value too large", span, env))?;
+                Utc.timestamp_opt(ts_i64, 0)
+                    .single()
+                    .ok_or_else(|| runtime_err("Invalid timestamp", span, env))?
+            }
+            Value::Float(ts) => {
+                let secs = ts.floor() as i64;
+                let nanos = ((ts - ts.floor()) * 1_000_000_000.0) as u32;
+                Utc.timestamp_opt(secs, nanos)
+                    .single()
+                    .ok_or_else(|| runtime_err("Invalid timestamp", span, env))?
+            }
+            _ => {
+                return Err(runtime_err(
+                    "TIMEZONE requires a numeric timestamp",
+                    span,
+                    env,
+                ));
+            }
+        };
+        let tz: Tz = tz
+            .parse()
+            .map_err(|_| runtime_err(format!("Invalid timezone: {}", tz), span, env))?;
+        let dt_tz = dt_utc.with_timezone(&tz);
+        Ok(Value::String(dt_tz.naive_local().to_string()))
+    } else {
+        Err(runtime_err(
+            "TIMEZONE requires a timezone name (string)",
+            span,
+            env,
+        ))
+    }
+}
+
+fn eval_builtin_timezones(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+) -> EvalResult {
+    if !args.is_empty() {
+        return Err(runtime_err("TIMEZONES takes no arguments", span, env));
+    }
+    use chrono_tz::TZ_VARIANTS;
+    let tzs: Vec<Value> = TZ_VARIANTS
+        .iter()
+        .map(|tz| Value::String(tz.name().to_string()))
+        .collect();
+    Ok(Value::List(tzs))
+}
+
+fn eval_builtin_millitime(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+) -> EvalResult {
+    if !args.is_empty() {
+        return Err(runtime_err("MILLITIME takes no arguments", span, env));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| runtime_err(e.to_string(), span, env))?;
+    Ok(Value::Integer(BigInt::from(now.as_millis())))
+}
+
+fn eval_builtin_contains(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("CONTAINS requires two arguments", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let text_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (str_val, text_val) {
+        (Value::String(s), Value::String(t)) => Ok(Value::Boolean(s.contains(&t))),
+        _ => Err(runtime_err(
+            "CONTAINS requires two string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_find(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("FIND requires two arguments", span, env));
+    }
+    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let text_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (str_val, text_val) {
+        (Value::String(s), Value::String(t)) => match s.find(&t) {
+            Some(index) => Ok(Value::Integer(BigInt::from(index + 1))),
+            None => Ok(Value::Integer(BigInt::from(-1))),
+        },
+        _ => Err(runtime_err("FIND requires two string arguments", span, env)),
+    }
+}
+
+fn eval_builtin_range(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    match args.len() {
+        1 => {
+            let end = evaluate_node(&args[0], Rc::clone(env), debug)?;
+            if let Value::Integer(end_val) = end {
+                if end_val < BigInt::one() {
+                    return Err(runtime_err(
+                        "RANGE end value must be greater than 0",
+                        span,
+                        env,
+                    ));
+                }
+                Ok(Value::List(bigint_range_inclusive(BigInt::one(), end_val)))
+            } else {
+                Err(runtime_err("RANGE requires integer arguments", span, env))
+            }
+        }
+        2 => {
+            let start = evaluate_node(&args[0], Rc::clone(env), debug)?;
+            let end = evaluate_node(&args[1], Rc::clone(env), debug)?;
+            if let (Value::Integer(start_val), Value::Integer(end_val)) = (start, end) {
+                if end_val < start_val {
+                    return Err(runtime_err(
+                        "RANGE end value must be greater than or equal to start value",
+                        span,
+                        env,
+                    ));
+                }
+                Ok(Value::List(bigint_range_inclusive(start_val, end_val)))
+            } else {
+                Err(runtime_err("RANGE requires integer arguments", span, env))
+            }
+        }
+        _ => Err(runtime_err(
+            "RANGE requires one or two arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_startswith(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("STARTSWITH requires two arguments", span, env));
+    }
+    let fullstring = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let substring = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (fullstring, substring) {
+        (Value::String(s), Value::String(sub)) => Ok(Value::Boolean(s.starts_with(&sub))),
+        _ => Err(runtime_err(
+            "STARTSWITH requires two string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_endswith(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("ENDSWITH requires two arguments", span, env));
+    }
+    let fullstring = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let substring = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match (fullstring, substring) {
+        (Value::String(s), Value::String(sub)) => Ok(Value::Boolean(s.ends_with(&sub))),
+        _ => Err(runtime_err(
+            "ENDSWITH requires two string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
 fn eval_single_num_fn(
     args: &[Spanned],
     env: &Rc<RefCell<Environment>>,
@@ -1727,6 +1939,43 @@ fn eval_single_num_fn(
     }
 }
 
+fn mixed_arithmetic(a: f64, op: &BinaryOperator, b: f64) -> Result<Value, String> {
+    match op {
+        BinaryOperator::Add => Ok(Value::Float(a + b)),
+        BinaryOperator::Sub => Ok(Value::Float(a - b)),
+        BinaryOperator::Mul => Ok(Value::Float(a * b)),
+        BinaryOperator::Div => {
+            if b == 0.0 {
+                Err("Division by zero".to_string())
+            } else {
+                Ok(Value::Float(a / b))
+            }
+        }
+        BinaryOperator::Mod => {
+            if b == 0.0 {
+                Err("Modulo by zero".to_string())
+            } else {
+                Ok(Value::Float(a % b))
+            }
+        }
+        _ => unreachable!("mixed_arithmetic called with non-arithmetic operator"),
+    }
+}
+
+fn mixed_compare(a: f64, op: &BinaryOperator, b: f64) -> Result<Value, String> {
+    let result = match op {
+        BinaryOperator::Eq => a == b,
+        BinaryOperator::NotEq => a != b,
+        BinaryOperator::Lt => a < b,
+        BinaryOperator::LtEq => a <= b,
+        BinaryOperator::Gt => a > b,
+        BinaryOperator::GtEq => a >= b,
+        _ => unreachable!("mixed_compare called with non-comparison operator"),
+    };
+    Ok(Value::Boolean(result))
+}
+
+// skipcq: RS-R1000
 fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Result<Value, String> {
     match (left, op, right) {
         (Value::NaN, BinaryOperator::Eq, _) => Ok(Value::Boolean(false)),
@@ -1794,37 +2043,11 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         }
 
         // Mixed Integer/Float arithmetic
-        (Value::Integer(a), BinaryOperator::Add, Value::Float(b)) => {
-            Ok(Value::Float(bigint_to_f64(a) + b))
+        (Value::Integer(a), op, Value::Float(b)) if op.is_arithmetic() => {
+            mixed_arithmetic(bigint_to_f64(a), op, *b)
         }
-        (Value::Float(a), BinaryOperator::Add, Value::Integer(b)) => {
-            Ok(Value::Float(a + bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::Sub, Value::Float(b)) => {
-            Ok(Value::Float(bigint_to_f64(a) - b))
-        }
-        (Value::Float(a), BinaryOperator::Sub, Value::Integer(b)) => {
-            Ok(Value::Float(a - bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::Mul, Value::Float(b)) => {
-            Ok(Value::Float(bigint_to_f64(a) * b))
-        }
-        (Value::Float(a), BinaryOperator::Mul, Value::Integer(b)) => {
-            Ok(Value::Float(a * bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::Div, Value::Float(b)) => {
-            if *b == 0.0 {
-                Err("Division by zero".to_string())
-            } else {
-                Ok(Value::Float(bigint_to_f64(a) / b))
-            }
-        }
-        (Value::Float(a), BinaryOperator::Div, Value::Integer(b)) => {
-            if b.is_zero() {
-                Err("Division by zero".to_string())
-            } else {
-                Ok(Value::Float(a / bigint_to_f64(b)))
-            }
+        (Value::Float(a), op, Value::Integer(b)) if op.is_arithmetic() => {
+            mixed_arithmetic(*a, op, bigint_to_f64(b))
         }
 
         // Boolean equality
@@ -1847,41 +2070,11 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         (Value::Float(a), BinaryOperator::GtEq, Value::Float(b)) => Ok(Value::Boolean(a >= b)),
 
         // Mixed Integer/Float comparisons
-        (Value::Integer(a), BinaryOperator::Eq, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) == *b))
+        (Value::Integer(a), op, Value::Float(b)) if op.is_comparison() => {
+            mixed_compare(bigint_to_f64(a), op, *b)
         }
-        (Value::Float(a), BinaryOperator::Eq, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a == bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::NotEq, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) != *b))
-        }
-        (Value::Float(a), BinaryOperator::NotEq, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a != bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::Lt, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) < *b))
-        }
-        (Value::Float(a), BinaryOperator::Lt, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a < bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::LtEq, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) <= *b))
-        }
-        (Value::Float(a), BinaryOperator::LtEq, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a <= bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::Gt, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) > *b))
-        }
-        (Value::Float(a), BinaryOperator::Gt, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a > bigint_to_f64(b)))
-        }
-        (Value::Integer(a), BinaryOperator::GtEq, Value::Float(b)) => {
-            Ok(Value::Boolean(bigint_to_f64(a) >= *b))
-        }
-        (Value::Float(a), BinaryOperator::GtEq, Value::Integer(b)) => {
-            Ok(Value::Boolean(*a >= bigint_to_f64(b)))
+        (Value::Float(a), op, Value::Integer(b)) if op.is_comparison() => {
+            mixed_compare(*a, op, bigint_to_f64(b))
         }
 
         _ => Err(format!(
@@ -1917,10 +2110,12 @@ fn value_to_string(value: &Value) -> String {
 }
 
 fn bigint_to_f64(n: &BigInt) -> f64 {
-    n.to_f64().unwrap_or(if n.is_negative() {
-        f64::NEG_INFINITY
-    } else {
-        f64::INFINITY
+    n.to_f64().unwrap_or_else(|| {
+        if n.is_negative() {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        }
     })
 }
 

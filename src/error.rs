@@ -53,8 +53,7 @@ pub fn resolve_span(source: &str, span: &Span) -> (usize, usize, String) {
 
     let line_end = source[line_start..]
         .find('\n')
-        .map(|pos| line_start + pos)
-        .unwrap_or(source.len());
+        .map_or(source.len(), |pos| line_start + pos);
     let line_content = source[line_start..line_end].to_string();
 
     (line, col, line_content)
@@ -96,7 +95,7 @@ impl PSLError {
                 );
 
                 for frame in &self.stack_trace {
-                    let (frame_line, _, _) = resolve_span(source, &frame.span);
+                    let (frame_line, _col, _line_content) = resolve_span(source, &frame.span);
                     result.push_str(&format!("\n  in {} (line {})", frame.name, frame_line));
                 }
 

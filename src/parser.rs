@@ -95,6 +95,31 @@ pub enum BinaryOperator {
     Or,
 }
 
+impl BinaryOperator {
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            BinaryOperator::Eq
+                | BinaryOperator::NotEq
+                | BinaryOperator::Lt
+                | BinaryOperator::LtEq
+                | BinaryOperator::Gt
+                | BinaryOperator::GtEq
+        )
+    }
+
+    pub fn is_arithmetic(&self) -> bool {
+        matches!(
+            self,
+            BinaryOperator::Add
+                | BinaryOperator::Sub
+                | BinaryOperator::Mul
+                | BinaryOperator::Div
+                | BinaryOperator::Mod
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum UnaryOperator {
@@ -185,6 +210,7 @@ impl Parser {
         Ok(self.spanned_from(AstNode::Program(statements), start))
     }
 
+    // skipcq: RS-R1000
     fn parse_statement(&mut self, debug: bool) -> Result<Spanned, PSLError> {
         Self::debug_print(
             debug,
@@ -721,6 +747,7 @@ impl Parser {
         }
     }
 
+    // skipcq: RS-R1000
     fn parse_primary(&mut self, debug: bool) -> Result<Spanned, PSLError> {
         let start = self.peek_span().start;
         match self.peek() {
