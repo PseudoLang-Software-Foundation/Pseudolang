@@ -11,13 +11,8 @@ default:
 version:
   @echo "{{VERSION}}"
 
-# Sync VERSION from Cargo.toml into wapm.toml
-version-sync:
-  cd {{ROOT}} && sed -i 's/^version = ".*"/version = "{{VERSION}}"/' wapm.toml
-  @echo "Synced version {{VERSION}} to wapm.toml"
-
 # Tag current version and push to trigger a release
-tag-release: version-sync
+tag-release:
   #!/usr/bin/env bash
   set -euo pipefail
   cd "{{ROOT}}"

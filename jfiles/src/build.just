@@ -18,13 +18,9 @@ build-windows:
 build-linux:
   cd {{ROOT}} && cross build --release --target x86_64-unknown-linux-gnu --features native
 
-# Build raw WASM
+# Build WASM (wasm-bindgen via wasm-pack)
 build-wasm:
-  cd {{ROOT}} && cargo build --release --target wasm32-unknown-unknown --features wasm
-
-# Build WASM with wasm-bindgen
-build-wasm-bindgen:
-  cd {{ROOT}} && wasm-pack build --target web --release -- --features "wasm bindgen"
+  cd {{ROOT}} && wasm-pack build --target web --release -- --features wasm
 
 # Build WASI target
 build-wasi:
@@ -35,17 +31,16 @@ build-installer:
   cd {{ROOT}} && makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
 
 # Full release: all targets + installer + copy artifacts
-build-all: build-windows build-linux build-wasm build-wasm-bindgen build-wasi
+build-all: build-windows build-linux build-wasm build-wasi
   #!/usr/bin/env bash
   set -euo pipefail
   cd "{{ROOT}}"
-  mkdir -p release/installer release/wasi release/wasm/raw release/wasm/bindgen
+  mkdir -p release/installer release/wasi release/wasm
   cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe || true
   cp release/fplc-x64.exe installer/fplc.exe || true
   cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 || true
   chmod +x release/fplc-linux-x64 || true
-  cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/raw/ || true
-  cp pkg/* release/wasm/bindgen/ || true
+  cp pkg/* release/wasm/ || true
   cp target/wasm32-wasip1/release/fplc.wasm release/wasi/ || true
   if command -v makensis >/dev/null 2>&1; then
     makensis -DVERSION={{VERSION}} installer/pseudolang.nsi

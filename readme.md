@@ -16,7 +16,7 @@
 
 Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by College Board's Pseudocode.
 
-This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI Package, Raw WASM, WASM Bindgen).
+This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI CLI, wasm-bindgen for browser).
 
 ## Screenshots
 
@@ -49,11 +49,44 @@ In order to compile the project yourself, you will need to have rust installed.
 - Install [**rust**](https://www.rust-lang.org/tools/install), and make sure you have it added to PATH.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
 
-  - To build **release**, you will need bash, cross (cargo install cross), and docker. Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
+  - To build **release**, you will need bash, cross (`cargo install cross`), wasm-pack, and docker. Then run `just build-all` from `jfiles/src/`. The binaries for each target will be in the `release` folder.
   - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
 
 - In order to run the unit tests, simply run `cargo test`.
 - For the NSIS installer, just compile `./installer/pseudolang.nsi`
+
+## Just Commands
+
+All recipes live in `jfiles/src/` and are run with [`just`](https://github.com/casey/just) from that directory.
+
+| Command                   | Description                                                    |
+| ------------------------- | -------------------------------------------------------------- |
+| `just install`            | Install toolchain deps (cross, wasm-pack, taplo, WASM targets) |
+| `just build`              | Debug build (native)                                           |
+| `just release`            | Release build (native)                                         |
+| `just build-wasm`         | Browser WASM via wasm-pack/wasm-bindgen                        |
+| `just build-wasi`         | WASI CLI binary (`wasm32-wasip1`)                              |
+| `just build-all`          | Full release: Windows, Linux, WASM, WASI + installer           |
+| `just test`               | Run all tests                                                  |
+| `just test-verbose`       | Run tests with stdout                                          |
+| `just run <ARGS>`         | Run fplc in debug mode                                         |
+| `just run-release <ARGS>` | Run fplc in release mode                                       |
+| `just fmt`                | Clippy fix + rustfmt + taplo fmt                               |
+| `just fmt-check`          | Lint/format check (no changes)                                 |
+| `just check`              | `cargo check`                                                  |
+| `just clean`              | Remove build artifacts                                         |
+| `just tag-release`        | Tag current version and push (triggers CI release)             |
+
+## Build / CI Pipeline
+
+CI is defined in `.github/workflows/build.yml`. On every push it runs tests, then builds four targets in parallel:
+
+1. **Windows** (`x86_64-pc-windows-gnu`) -- cross-compiled, plus NSIS installer
+2. **Linux** (`x86_64-unknown-linux-gnu`) -- cross-compiled
+3. **WASM** (`wasm32-unknown-unknown`) -- wasm-pack/wasm-bindgen bundle for browser embedding
+4. **WASI** (`wasm32-wasip1`) -- standalone CLI binary for runtimes like webassembly.sh
+
+Pushing a `vX.Y.Z` tag triggers a GitHub Release with all artifacts attached.
 
 ## Examples
 
@@ -64,7 +97,6 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 ## To-do
 
 - [ ] Debian package
-- [ ] GitHub issue template
 - [ ] Proper documentation
 
 <details>

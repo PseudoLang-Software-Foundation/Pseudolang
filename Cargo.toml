@@ -52,7 +52,7 @@ libc = "0.2"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 wasi = { version = "0.11", optional = true }
 js-sys = { version = "0.3", optional = true }
 
@@ -61,4 +61,3 @@ default = ["native"]
 native = ["chrono", "chrono-tz"]
 wasm = ["wasm-bindgen", "console_error_panic_hook", "js-sys"]
 wasi = ["dep:wasi"]
-bindgen = ["wasm-bindgen", "console_error_panic_hook", "js-sys"]
