@@ -2,70 +2,101 @@ name: Build, Test, and Publish Pseudolang
 
 on:
   push:
-    branches:
-      - '**'
+    branches: ['**']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
   workflow_dispatch:
 
-permissions: write-all
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   test:
-    name: Run Tests
+    name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
       - name: Run Tests
         run: cargo test --verbose
 
   build:
-    name: Build Multi-Platform
+    name: Build (${{ matrix.target }})
     needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
-          - x86_64-pc-windows-gnu
-          - x86_64-unknown-linux-gnu
-          - wasm32-unknown-unknown
-          - wasm32-wasip1
-    
+        include:
+          - target: x86_64-pc-windows-gnu
+            kind: native
+          - target: x86_64-unknown-linux-gnu
+            kind: native
+          - target: wasm32-unknown-unknown
+            kind: wasm
+          - target: wasm32-wasip1
+            kind: wasi
+
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-          target: ${{ matrix.target }}
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Extract Version
+        run: echo "VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*\"\(.*\)\".*/\1/')" >> $GITHUB_ENV
 
       - name: Install Cross
-        if: ${{ !contains(matrix.target, 'wasm') }}
+        if: matrix.kind == 'native'
         run: cargo install cross
 
       - name: Install wasm-pack
         if: matrix.target == 'wasm32-unknown-unknown'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build WASM
-        if: matrix.target == 'wasm32-unknown-unknown'
+      # --- Native builds ---
+
+      - name: Build Native
+        if: matrix.kind == 'native'
+        run: cross build --release --target ${{ matrix.target }} --features native
+
+      - name: Prepare Native Artifacts
+        if: matrix.kind == 'native'
         run: |
-          cargo build --release --target wasm32-unknown-unknown --features wasm
-          mkdir -p release/wasm
-          cp target/wasm32-unknown-unknown/release/fplc.wasm release/wasm/
+          mkdir -p release
+          if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
+            cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
+          elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
+            chmod +x release/fplc-linux-x64
+          fi
+
+      # --- Windows installer ---
+
+      - name: Install NSIS
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build Windows Installer
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          mkdir -p release/installer installer
+          cp release/fplc-x64.exe installer/fplc.exe
+          makensis -DVERSION=${{ env.VERSION }} installer/pseudolang.nsi
+          cp release/installer/pseudolang-setup-x64.exe release/
+
+      # --- WASM builds ---
 
       - name: Build WASM (Raw)
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -85,64 +116,16 @@ jobs:
           cp pkg/fplc_bg.wasm.d.ts release/wasm-bindgen/
           cd release && zip -r wasm-bindgen.zip wasm-bindgen/
 
-      - name: Upload Raw WASM Artifact
-        if: matrix.target == 'wasm32-unknown-unknown'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pseudolang-raw-wasm
-          path: release/fplc-raw.wasm
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload Bindgen WASM Artifact
-        if: matrix.target == 'wasm32-unknown-unknown'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pseudolang-wasm-bindgen
-          path: release/wasm-bindgen.zip
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Build Native
-        if: ${{ !contains(matrix.target, 'wasm') }}
-        run: cross build --release --target ${{ matrix.target }} --features native
+      # --- WASI build ---
 
       - name: Build WASI
-        if: matrix.target == 'wasm32-wasip1'
+        if: matrix.kind == 'wasi'
         run: |
           cargo build --release --target wasm32-wasip1 --features wasi
-          mkdir -p release/wasi
-          cp target/wasm32-wasip1/release/fplc.wasm release/wasi/
-
-      - name: Prepare Artifacts
-        if: ${{ !contains(matrix.target, 'wasm') }}
-        run: |
           mkdir -p release
-          mkdir -p installer
-          if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
-            cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
-            cp release/fplc-x64.exe installer/fplc.exe
-          elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
-            cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
-            chmod +x release/fplc-linux-x64
-          fi
+          cp target/wasm32-wasip1/release/fplc.wasm release/fplc-wasi.wasm
 
-      - name: Install NSIS
-        if: matrix.target == 'x86_64-pc-windows-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y nsis
-
-      - name: Extract Version
-        if: matrix.target == 'x86_64-pc-windows-gnu'
-        run: echo "VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*\"\(.*\)\".*/\1/')" >> $GITHUB_ENV
-
-      - name: Build Windows Installer
-        if: matrix.target == 'x86_64-pc-windows-gnu'
-        run: |
-          mkdir -p release/installer
-          makensis -DVERSION=${{ env.VERSION }} installer/pseudolang.nsi
-          cp release/installer/pseudolang-setup-x64.exe release/
+      # --- Upload artifacts ---
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -152,110 +135,38 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload Installer Artifact
-        if: matrix.target == 'x86_64-pc-windows-gnu'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pseudolang-installer
-          path: release/installer/pseudolang-setup-x64.exe
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload WASM Artifacts
-        if: matrix.target == 'wasm32-unknown-unknown'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pseudolang-wasm
-          path: pkg/*
-          retention-days: 7
-          if-no-files-found: error
-
   publish:
     name: Publish Release
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
-      discussions: write
-      pull-requests: write
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '.') && startsWith(github.event.head_commit.message, '0.') || startsWith(github.event.head_commit.message, '1.') || startsWith(github.event.head_commit.message, '2.') || startsWith(github.event.head_commit.message, '3.') || startsWith(github.event.head_commit.message, '4.') || startsWith(github.event.head_commit.message, '5.') || startsWith(github.event.head_commit.message, '6.') || startsWith(github.event.head_commit.message, '7.') || startsWith(github.event.head_commit.message, '8.') || startsWith(github.event.head_commit.message, '9.')
-    
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      
-      - name: Create Git Tag
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          TAG_NAME=$(git log -1 --pretty=%s | grep -oE '\b[0-9]+\.[0-9]+\.[0-9]+\b')
-          TAG_NAME="v${TAG_NAME}"
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag $TAG_NAME already exists. Skipping tag creation."
-          else
-            git tag "$TAG_NAME"
-            git push origin "$TAG_NAME"
-          fi
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
-          
-      - name: Download Windows Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: pseudolang-x86_64-pc-windows-gnu
-          path: artifacts/windows
-          
-      - name: Download Linux Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: pseudolang-x86_64-unknown-linux-gnu
-          path: artifacts/linux
+      - uses: actions/checkout@v4
 
-      - name: Download WASI Artifacts
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pseudolang-wasm32-wasip1
-          path: artifacts/wasi
-
-      - name: Download WASM Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: pseudolang-wasm32-unknown-unknown
-          path: artifacts/wasm
-
-      - name: Download Raw WASM Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: pseudolang-raw-wasm
-          path: artifacts/wasm-raw
-
-      - name: Download Bindgen WASM Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: pseudolang-wasm-bindgen
-          path: artifacts/wasm-bindgen
+          path: artifacts
 
       - name: Prepare Release Files
         run: |
           mkdir -p release
-          cp artifacts/windows/fplc-x64.exe release/
-          cp artifacts/windows/pseudolang-setup-x64.exe release/ || true
-          cp artifacts/linux/fplc-linux-x64 release/
-          cp artifacts/wasi/wasi/fplc.wasm release/fplc-wasi.wasm || true
-          cp artifacts/wasm-raw/fplc-raw.wasm release/ || true
-          cp artifacts/wasm-bindgen/wasm-bindgen.zip release/ || true
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/fplc-x64.exe release/
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe release/ || true
+          cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fplc-linux-x64 release/
+          cp artifacts/pseudolang-wasm32-wasip1/fplc-wasi.wasm release/ || true
+          cp artifacts/pseudolang-wasm32-unknown-unknown/fplc-raw.wasm release/ || true
+          cp artifacts/pseudolang-wasm32-unknown-unknown/wasm-bindgen.zip release/ || true
           chmod +x release/fplc-linux-x64
 
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ env.TAG_NAME }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: Pseudolang ${{ env.TAG_NAME }}
-          body: |
-            See the full changelog: https://github.com/${{ github.repository }}/compare/${{ env.TAG_NAME }}~1...${{ env.TAG_NAME }}
+          tag_name: ${{ github.ref_name }}
+          name: Pseudolang ${{ github.ref_name }}
+          generate_release_notes: true
           files: |
             release/fplc-x64.exe
             release/fplc-linux-x64

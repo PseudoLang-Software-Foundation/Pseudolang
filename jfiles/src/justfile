@@ -16,6 +16,20 @@ version-sync:
   cd {{ROOT}} && sed -i 's/^version = ".*"/version = "{{VERSION}}"/' wapm.toml
   @echo "Synced version {{VERSION}} to wapm.toml"
 
+# Tag current version and push to trigger a release
+tag-release: version-sync
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{ROOT}}"
+  TAG="v{{VERSION}}"
+  if git rev-parse "${TAG}" >/dev/null 2>&1; then
+    echo "Tag ${TAG} already exists"
+    exit 1
+  fi
+  git tag -a "${TAG}" -m "Release ${TAG}"
+  git push origin "${TAG}"
+  echo "Pushed ${TAG} -- CI will build and publish the release"
+
 # Install build toolchain and targets
 install:
   cargo install cross
