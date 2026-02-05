@@ -2,15 +2,19 @@
 !include "WinMessages.nsh"
 !include "WordFunc.nsh"
 
-!define MUI_ICON "Pseudolang-Logo.ico"
+!ifndef VERSION
+  !define VERSION "0.0.0"
+!endif
 
-Name "PseudoLang Installer v0.9.520"
+!define MUI_ICON "../assets/Pseudolang-Logo.ico"
+
+Name "PseudoLang Installer v${VERSION}"
 InstallDir "$PROGRAMFILES\PseudoLang\"
 OutFile "../release/installer/pseudolang-setup-x64.exe"
-BrandingText "(c) 2024 PseudoLang Software Foundation"
+BrandingText "(c) 2026 PseudoLang Software Foundation"
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "LICENSE"
+!insertmacro MUI_PAGE_LICENSE "../LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -33,7 +37,7 @@ Section ""
     WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$INSTDIR;$R0"
     
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayName" "Pseudolang"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayVersion" "0.9.520"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayVersion" "${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "Publisher" "Pseudolang Software Foundation"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayIcon" "$INSTDIR\Pseudolang-Logo.ico"
 
@@ -41,8 +45,8 @@ Section ""
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "NoRepair" 1
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "UninstallString" "$INSTDIR\uninstall.exe"
 
-    File "LICENSE"
-    File "Pseudolang-Logo.ico"
+    File "../LICENSE"
+    File "../assets/Pseudolang-Logo.ico"
     
     WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd

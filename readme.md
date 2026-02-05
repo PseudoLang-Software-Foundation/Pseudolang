@@ -3,13 +3,13 @@
 </div>
 
 <p align="center">
-    <img src="Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
+    <img src="./assets/Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
 </p>
 
 <div align="center">
   <p>
     <img src="https://github.com/PseudoLang-Software-Foundation/Pseudolang/actions/workflows/build.yml/badge.svg" alt="Build and Test Pseudolang">
-    <img src="https://img.shields.io/badge/Version-0.9.520-green" alt="Version">
+    <img src="https://img.shields.io/github/v/release/PseudoLang-Software-Foundation/Pseudolang?color=green&label=Version" alt="Version">
     <a href="https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main"><img src="https://img.shields.io/badge/Nightly-Releases-purple" alt="Nightly Releases"></a>
   </p>
 </div>
@@ -48,6 +48,7 @@ In order to compile the project yourself, you will need to have rust installed.
 
 - Install [**rust**](https://www.rust-lang.org/tools/install), and make sure you have it added to PATH.
 - Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
+
   - To build **release**, you will need bash, cross (cargo install cross), and docker. Then run `./build_release.sh`. The binaries for each operating system will be in the `release` folder.
   - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
 

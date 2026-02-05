@@ -4,6 +4,9 @@ set -e
 
 chmod +x build_release.sh
 
+VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+echo "Building Pseudolang v${VERSION}"
+
 mkdir -p release/installer release/wasi release/wasm/raw release/wasm/bindgen
 
 echo "Building native targets..."
@@ -38,7 +41,7 @@ cargo build --release --target wasm32-wasip1 --features wasi
 echo "Building Windows installer..."
 if command -v makensis >/dev/null 2>&1; then
     cd installer
-    makensis pseudolang.nsi
+    makensis -DVERSION="${VERSION}" pseudolang.nsi
     cd ..
     echo "Windows installer built successfully"
 else
