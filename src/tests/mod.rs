@@ -516,7 +516,7 @@ mod test {
         let result = run_test("x <- RANDOM(1, 10)\nDISPLAY(x)").unwrap();
         let trimmed_result = result.trim();
         let num: i32 = trimmed_result.parse().unwrap();
-        assert!(num >= 1 && num <= 10);
+        assert!((1..=10).contains(&num));
 
         let result = run_test(
             r#"
@@ -528,7 +528,7 @@ mod test {
         .unwrap();
         let trimmed_result = result.trim();
         let num: i32 = trimmed_result.parse().unwrap();
-        assert!(num >= 1 && num <= 10);
+        assert!((1..=10).contains(&num));
     }
 
     #[test]
@@ -1124,6 +1124,7 @@ DISPLAY(str[0])"#,
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_math_functions() {
         fn assert_float_eq(got: &str, expected: f64) {
             let got: f64 = got.trim().parse().unwrap();
@@ -1223,7 +1224,7 @@ DISPLAY(str[0])"#,
                 result <- []
                 leftIndex <- 1
                 rightIndex <- 1
-                
+
                 REPEAT UNTIL(leftIndex > LENGTH(left) AND rightIndex > LENGTH(right)) {
                     IF(leftIndex > LENGTH(left)) {
                         APPEND(result, right[rightIndex])
@@ -1246,22 +1247,22 @@ DISPLAY(str[0])"#,
                 IF(LENGTH(arr) <= 1) {
                     RETURN(arr)
                 }
-                
+
                 mid <- LENGTH(arr) / 2
                 left <- []
                 right <- []
-                
+
                 i <- 1
                 REPEAT mid TIMES {
                     APPEND(left, arr[i])
                     i <- i + 1
                 }
-                
+
                 REPEAT LENGTH(arr) - mid TIMES {
                     APPEND(right, arr[i])
                     i <- i + 1
                 }
-                
+
                 left <- mergeSort(left)
                 right <- mergeSort(right)
                 RETURN(merge(left, right))
@@ -1280,10 +1281,10 @@ DISPLAY(str[0])"#,
             PROCEDURE binarySearch(arr, target) {
                 left <- 1
                 right <- LENGTH(arr)
-                
+
                 REPEAT UNTIL(left > right) {
                     mid <- (left + right) / 2
-                    
+
                     IF(arr[mid] = target) {
                         RETURN(mid)
                     } ELSE IF(arr[mid] < target) {
@@ -1353,14 +1354,14 @@ DISPLAY(arr)"#,
                     REPEAT LENGTH(arr) - 1 TIMES {
                         key <- arr[i]
                         j <- i - 1
-                        
+
                         IF(j >= 1 AND arr[j] > key) {
                             REPEAT UNTIL(j < 1 OR arr[j] <= key) {
                                 arr[j + 1] <- arr[j]
                                 j <- j - 1
                             }
                         }
-                        
+
                         arr[j + 1] <- key
                         i <- i + 1
                     }
@@ -1380,18 +1381,18 @@ DISPLAY(arr)"#,
             PROCEDURE selectionSort(arr) {
                 n <- LENGTH(arr)
                 i <- 1
-                
+
                 REPEAT n - 1 TIMES {
                     minIdx <- i
                     j <- i + 1
-                    
+
                     REPEAT n - i TIMES {
                         IF(arr[j] < arr[minIdx]) {
                             minIdx <- j
                         }
                         j <- j + 1
                     }
-                    
+
                     IF(minIdx NOT= i) {
                         temp <- arr[minIdx]
                         arr[minIdx] <- arr[i]
@@ -1440,7 +1441,7 @@ DISPLAY(arr)"#,
                 }
                 RETURN(gcd(b, a MOD b))
             }
-            
+
             DISPLAY(gcd(48, 18))
             DISPLAY(gcd(54, 24))
             DISPLAY(gcd(17, 5))"#,
@@ -1457,7 +1458,7 @@ DISPLAY(arr)"#,
                 result_coeffs <- []
                 result_exps <- []
                 i <- 1
-                
+
                 REPEAT LENGTH(coefficients) TIMES
                 {
                     IF (exponents[i] NOT= 0)
@@ -1477,7 +1478,7 @@ DISPLAY(arr)"#,
                 result_coeffs <- []
                 result_exps <- []
                 i <- 1
-                
+
                 REPEAT LENGTH(coefficients) TIMES
                 {
                     new_exp <- exponents[i] + 1
@@ -1504,7 +1505,8 @@ DISPLAY(arr)"#,
             antideriv <- ANTIDERIVATIVE(coeffs2, exps2)
             DISPLAY("Antiderivative coefficients: " + TOSTRING(antideriv[1]))
             DISPLAY("Antiderivative exponents: " + TOSTRING(antideriv[2]))
-        "#, "Derivative coefficients: [6, 2]\nDerivative exponents: [1, 0]\nAntiderivative coefficients: [3, 2, 0]\nAntiderivative exponents: [2, 1, 0]",
+        "#,
+            "Derivative coefficients: [6, 2]\nDerivative exponents: [1, 0]\nAntiderivative coefficients: [3, 2, 0]\nAntiderivative exponents: [2, 1, 0]",
         );
     }
 
@@ -1690,7 +1692,7 @@ DISPLAY(arr)"#,
                 DISPLAY(c)
                 DISPLAY(d)
             }
-            
+
             test_min_max()
             "#,
             "5\n5\n10\n10",
@@ -1851,7 +1853,7 @@ DISPLAY(arr)"#,
             PROCEDURE linearSearch2D(matrix, target) {
                 rows <- LENGTH(matrix)
                 columns <- LENGTH(matrix[1])
-                
+
                 i <- 1
                 REPEAT rows TIMES {
                     j <- 1
@@ -1883,7 +1885,7 @@ DISPLAY(arr)"#,
             matrix <- [[1, 2, 3], [4, 5, 6]]
             matrix[1][3] <- 10
             DISPLAY(matrix[1][3])
-            
+
             matrix[2] <- [7, 8, 9]
             DISPLAY(matrix[2][2])
             "#,
@@ -1922,7 +1924,7 @@ DISPLAY(arr)"#,
             {
                 distances <- []
                 labels <- []
-                
+
                 i <- 1
                 REPEAT LENGTH(trainingData) TIMES
                 {
@@ -1931,7 +1933,7 @@ DISPLAY(arr)"#,
                     APPEND(labels, trainingLabels[i])
                     i <- i + 1
                 }
-                
+
                 sortedIndices <- []
                 i <- 1
                 REPEAT LENGTH(distances) TIMES
@@ -1950,7 +1952,7 @@ DISPLAY(arr)"#,
                     distances[minIndex] <- 999999999
                     i <- i + 1
                 }
-                
+
                 kNearest <- []
                 i <- 1
                 REPEAT k TIMES
@@ -1958,7 +1960,7 @@ DISPLAY(arr)"#,
                     APPEND(kNearest, labels[sortedIndices[i]])
                     i <- i + 1
                 }
-                
+
                 RETURN(kNearest)
             }
 
@@ -1966,7 +1968,7 @@ DISPLAY(arr)"#,
             {
                 counts <- []
                 uniqueLabels <- []
-                
+
                 FOR EACH label IN labels
                 {
                     found <- FALSE
@@ -1986,7 +1988,7 @@ DISPLAY(arr)"#,
                         APPEND(counts, 1)
                     }
                 }
-                
+
                 maxCount <- 0
                 maxLabel <- uniqueLabels[1]
                 i <- 1
@@ -1999,7 +2001,7 @@ DISPLAY(arr)"#,
                     }
                     i <- i + 1
                 }
-                
+
                 RETURN(maxLabel)
             }
 
@@ -2027,9 +2029,9 @@ DISPLAY(arr)"#,
             n <- LENGTH(x)
             sumX <- 0
             sumY <- 0
-            sumXY <- 0 
+            sumXY <- 0
             sumXSquare <- 0
-            
+
             i <- 1
             REPEAT n TIMES {
                 sumX <- sumX + x[i]
@@ -2038,10 +2040,10 @@ DISPLAY(arr)"#,
                 sumXSquare <- sumXSquare + x[i] * x[i]
                 i <- i + 1
             }
-            
+
             slope <- (n * sumXY - sumX * sumY) / (n * sumXSquare - sumX * sumX)
             intercept <- (sumY - slope * sumX) / n
-            
+
             RETURN([slope, intercept])
         }
 
@@ -2053,7 +2055,7 @@ DISPLAY(arr)"#,
 
         x <- [1, 2, 3, 4, 5]
         y <- [2, 4, 6, 8, 10]
-        
+
         coefficients <- linearRegression(x, y)
         prediction <- predict(6, coefficients)
         DISPLAY(FLOOR(prediction))
@@ -2122,13 +2124,15 @@ DISPLAY(arr)"#,
         .unwrap();
         assert_eq!(result.trim(), "true");
 
-        assert!(run_test(
-            r#"
+        assert!(
+            run_test(
+                r#"
             ts <- TIMESTAMP()
             DISPLAY(TIMEZONE(ts, "Invalid/Zone"))
         "#
-        )
-        .is_err());
+            )
+            .is_err()
+        );
     }
 
     #[test]

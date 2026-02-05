@@ -128,11 +128,11 @@ impl Parser {
     }
 
     fn match_token(&mut self, expected: &Token) -> bool {
-        if let Some(token) = self.peek() {
-            if token == expected {
-                self.advance();
-                return true;
-            }
+        if let Some(token) = self.peek()
+            && token == expected
+        {
+            self.advance();
+            return true;
         }
         false
     }
@@ -283,13 +283,11 @@ impl Parser {
                         self.advance();
                         let mut args = Vec::new();
                         while !self.match_token(&Token::CloseParen) {
-                            if !args.is_empty() {
-                                if !self.match_token(&Token::Comma) {
-                                    return Err(self.create_error(
-                                        "Expected comma between arguments",
-                                        self.current,
-                                    ));
-                                }
+                            if !args.is_empty() && !self.match_token(&Token::Comma) {
+                                return Err(self.create_error(
+                                    "Expected comma between arguments",
+                                    self.current,
+                                ));
                             }
                             args.push(self.parse_expression(debug)?);
                         }
@@ -415,34 +413,34 @@ impl Parser {
     }
 
     fn is_expression_start(&self) -> bool {
-        match self.peek() {
+        matches!(
+            self.peek(),
             Some(Token::Integer(_))
-            | Some(Token::Float(_))
-            | Some(Token::String(_))
-            | Some(Token::Boolean(_))
-            | Some(Token::Identifier(_))
-            | Some(Token::OpenParen)
-            | Some(Token::OpenBracket)
-            | Some(Token::Not)
-            | Some(Token::Minus)
-            | Some(Token::Plus)
-            | Some(Token::ToString)
-            | Some(Token::ToNum)
-            | Some(Token::ListLength)
-            | Some(Token::GreaterThan)
-            | Some(Token::GreaterThanOrEqual)
-            | Some(Token::LessThan)
-            | Some(Token::LessThanOrEqual)
-            | Some(Token::Equal)
-            | Some(Token::NotEqual)
-            | Some(Token::Random)
-            | Some(Token::ListRemove)
-            | Some(Token::ListAppend)
-            | Some(Token::ListInsert)
-            | Some(Token::Sort)
-            | Some(Token::Input) => true,
-            _ => false,
-        }
+                | Some(Token::Float(_))
+                | Some(Token::String(_))
+                | Some(Token::Boolean(_))
+                | Some(Token::Identifier(_))
+                | Some(Token::OpenParen)
+                | Some(Token::OpenBracket)
+                | Some(Token::Not)
+                | Some(Token::Minus)
+                | Some(Token::Plus)
+                | Some(Token::ToString)
+                | Some(Token::ToNum)
+                | Some(Token::ListLength)
+                | Some(Token::GreaterThan)
+                | Some(Token::GreaterThanOrEqual)
+                | Some(Token::LessThan)
+                | Some(Token::LessThanOrEqual)
+                | Some(Token::Equal)
+                | Some(Token::NotEqual)
+                | Some(Token::Random)
+                | Some(Token::ListRemove)
+                | Some(Token::ListAppend)
+                | Some(Token::ListInsert)
+                | Some(Token::Sort)
+                | Some(Token::Input)
+        )
     }
 
     pub fn parse_expression(&mut self, debug: bool) -> Result<AstNode, PseudoError> {
@@ -707,13 +705,10 @@ impl Parser {
                 if self.match_token(&Token::OpenParen) {
                     let mut args = Vec::new();
                     while !self.match_token(&Token::CloseParen) {
-                        if !args.is_empty() {
-                            if !self.match_token(&Token::Comma) {
-                                return Err(self.create_error(
-                                    "Expected comma between arguments",
-                                    self.current,
-                                ));
-                            }
+                        if !args.is_empty() && !self.match_token(&Token::Comma) {
+                            return Err(
+                                self.create_error("Expected comma between arguments", self.current)
+                            );
                         }
                         args.push(self.parse_expression(debug)?);
                     }
@@ -880,12 +875,8 @@ impl Parser {
             if token == &Token::CloseParen {
                 break;
             }
-            if !params.is_empty() {
-                if !self.match_token(&Token::Comma) {
-                    return Err(
-                        self.create_error("Expected comma between parameters", self.current)
-                    );
-                }
+            if !params.is_empty() && !self.match_token(&Token::Comma) {
+                return Err(self.create_error("Expected comma between parameters", self.current));
             }
             match self.advance() {
                 Some(Token::Identifier(param)) => params.push(param),

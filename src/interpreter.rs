@@ -224,14 +224,10 @@ fn evaluate_node(
             Ok(Value::List(values))
         }
 
-        AstNode::Identifier(name) => {
-            let result = env.borrow().get(name);
-            if result.is_none() {
-                Err(format!("Undefined variable: {}", name))
-            } else {
-                Ok(result.unwrap())
-            }
-        }
+        AstNode::Identifier(name) => match env.borrow().get(name) {
+            Some(val) => Ok(val),
+            None => Err(format!("Undefined variable: {}", name)),
+        },
 
         AstNode::Assignment(target, value) => {
             let val = evaluate_node(value, Rc::clone(&env), debug)?;
@@ -323,7 +319,7 @@ fn evaluate_node(
                 let output = value_to_string(&result);
                 if !std::thread::current()
                     .name()
-                    .map_or(false, |name| name.starts_with("test"))
+                    .is_some_and(|name| name.starts_with("test"))
                 {
                     println!("{}", output);
                     io::stdout().flush().unwrap();
@@ -334,7 +330,7 @@ fn evaluate_node(
             } else {
                 if !std::thread::current()
                     .name()
-                    .map_or(false, |name| name.starts_with("test"))
+                    .is_some_and(|name| name.starts_with("test"))
                 {
                     println!();
                 }
@@ -348,7 +344,7 @@ fn evaluate_node(
             let output = value_to_string(&value);
             if !std::thread::current()
                 .name()
-                .map_or(false, |name| name.starts_with("test"))
+                .is_some_and(|name| name.starts_with("test"))
             {
                 print!("{}", output);
                 io::stdout().flush().unwrap();
@@ -446,7 +442,9 @@ fn evaluate_node(
                     {
                         let _seconds = evaluate_node(&args[0], Rc::clone(&env), debug)?;
 
-                        log("SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.");
+                        log(
+                            "SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.",
+                        );
 
                         Ok(Value::Unit)
                     }
@@ -1145,8 +1143,7 @@ fn evaluate_node(
                             if end_val < 1 {
                                 return Err("RANGE end value must be greater than 0".to_string());
                             }
-                            let list: Vec<Value> =
-                                (1..=end_val).map(|i| Value::Integer(i)).collect();
+                            let list: Vec<Value> = (1..=end_val).map(Value::Integer).collect();
                             Ok(Value::List(list))
                         } else {
                             Err("RANGE requires integer arguments".to_string())
@@ -1163,7 +1160,7 @@ fn evaluate_node(
                                 );
                             }
                             let list: Vec<Value> =
-                                (start_val..=end_val).map(|i| Value::Integer(i)).collect();
+                                (start_val..=end_val).map(Value::Integer).collect();
                             Ok(Value::List(list))
                         } else {
                             Err("RANGE requires integer arguments".to_string())
@@ -1235,9 +1232,7 @@ fn evaluate_node(
             };
 
             unsafe {
-                if CURRENT_STACK_DEPTH > 0 {
-                    CURRENT_STACK_DEPTH -= 1;
-                }
+                CURRENT_STACK_DEPTH = CURRENT_STACK_DEPTH.saturating_sub(1);
             }
 
             result
@@ -1307,38 +1302,34 @@ fn evaluate_node(
                 } else {
                     Err("Invalid list index".to_string())
                 }
-            } else {
-                if let AstNode::ListAccess(inner_list, inner_index) = &**list {
-                    let list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
-                    let index_inner = evaluate_node(inner_index, Rc::clone(&env), debug)?;
+            } else if let AstNode::ListAccess(inner_list, inner_index) = &**list {
+                let list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
+                let index_inner = evaluate_node(inner_index, Rc::clone(&env), debug)?;
 
-                    if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_inner)
+                if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_inner) {
+                    let idx = i - 1;
+                    if idx >= 0
+                        && (idx as usize) < elements.len()
+                        && let Value::Integer(j) = index_val
                     {
-                        let idx = i - 1;
-                        if idx >= 0 && (idx as usize) < elements.len() {
-                            if let Value::Integer(j) = index_val {
-                                let jdx = j - 1;
-                                if let Value::List(mut inner_elements) =
-                                    elements[idx as usize].clone()
-                                {
-                                    if jdx >= 0 && (jdx as usize) < inner_elements.len() {
-                                        inner_elements[jdx as usize] = new_val.clone();
-                                        elements[idx as usize] = Value::List(inner_elements);
+                        let jdx = j - 1;
+                        if let Value::List(mut inner_elements) = elements[idx as usize].clone()
+                            && jdx >= 0
+                            && (jdx as usize) < inner_elements.len()
+                        {
+                            inner_elements[jdx as usize] = new_val.clone();
+                            elements[idx as usize] = Value::List(inner_elements);
 
-                                        if let AstNode::Identifier(name) = &**inner_list {
-                                            env.borrow_mut()
-                                                .set(name.clone(), Value::List(elements));
-                                            return Ok(new_val);
-                                        }
-                                    }
-                                }
+                            if let AstNode::Identifier(name) = &**inner_list {
+                                env.borrow_mut().set(name.clone(), Value::List(elements));
+                                return Ok(new_val);
                             }
                         }
                     }
-                    Err("Invalid nested list assignment".to_string())
-                } else {
-                    Err("Invalid list assignment target".to_string())
                 }
+                Err("Invalid nested list assignment".to_string())
+            } else {
+                Err("Invalid list assignment target".to_string())
             }
         }
 
@@ -1578,7 +1569,7 @@ fn evaluate_node(
         }
 
         AstNode::Import(path) => {
-            let content = std::fs::read_to_string(&path)
+            let content = std::fs::read_to_string(path)
                 .map_err(|e| format!("Failed to read import file {}: {}", path, e))?;
 
             let mut lexer = crate::lexer::Lexer::new(&content);

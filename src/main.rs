@@ -78,7 +78,7 @@ fn parse_args() -> Result<Config, String> {
         });
     }
 
-    match args.get(0).map(String::as_str) {
+    match args.first().map(String::as_str) {
         Some("run") => {
             if args.len() < 2 {
                 return Err(format_missing_input_error());
@@ -138,11 +138,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n=== Debug Mode Enabled ===\n");
     }
 
-    if let Command::Run = config.command {
-        if let Err(error) = run_program(&config.input_file, config.debug) {
-            eprintln!("Error: {}", error);
-            std::process::exit(1);
-        }
+    if let Command::Run = config.command
+        && let Err(error) = run_program(&config.input_file, config.debug)
+    {
+        eprintln!("Error: {}", error);
+        std::process::exit(1);
     }
 
     Ok(())
