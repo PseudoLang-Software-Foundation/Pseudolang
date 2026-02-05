@@ -1,4 +1,4 @@
-use super::{assert_output, run_test};
+use super::{assert_output, get_error, run_test};
 
 #[test]
 fn test_basic_arithmetic() {
@@ -236,4 +236,97 @@ fn test_math_functions() {
             Err(e) => panic!("Test failed for input '{}': {}", input, e),
         }
     }
+}
+
+#[test]
+fn test_integer_division_truncation() {
+    assert_output("DISPLAY(5 / 2)", "2");
+    assert_output("DISPLAY(-5 / 2)", "-2");
+    assert_output("DISPLAY(19 / 4)", "4");
+    assert_output("DISPLAY(7 / 3)", "2");
+    assert_output("DISPLAY(-7 / 3)", "-2");
+    assert_output("DISPLAY(1 / 3)", "0");
+}
+
+#[test]
+fn test_integer_overflow_promotion() {
+    assert_output("DISPLAY(9223372036854775807 + 1)", "9223372036854776000");
+    assert_output("DISPLAY(9223372036854775807 * 2)", "18446744073709552000");
+}
+
+#[test]
+fn test_nan_arithmetic_propagation() {
+    assert_output("x <- NAN\nDISPLAY(x + 1)", "NAN");
+    assert_output("x <- NAN\nDISPLAY(x - 5)", "NAN");
+    assert_output("x <- NAN\nDISPLAY(x * 10)", "NAN");
+    assert_output("x <- NAN\nDISPLAY(1 + NAN)", "NAN");
+}
+
+#[test]
+fn test_nan_comparison_semantics() {
+    assert_output("DISPLAY(NAN = NAN)", "false");
+    assert_output("DISPLAY(NAN NOT= NAN)", "true");
+    assert_output("DISPLAY(NAN = 0)", "false");
+    assert_output("DISPLAY(NAN NOT= 0)", "true");
+}
+
+#[test]
+fn test_null_comparison_semantics() {
+    assert_output("DISPLAY(NULL = NULL)", "true");
+    assert_output("DISPLAY(NULL NOT= NULL)", "false");
+    assert_output("DISPLAY(NULL = 0)", "false");
+    assert_output("DISPLAY(NULL = \"\")", "false");
+}
+
+#[test]
+fn test_mixed_int_float_arithmetic() {
+    assert_output("DISPLAY(1 + 0.5)", "1.5");
+    assert_output("DISPLAY(10 - 2.5)", "7.5");
+    assert_output("DISPLAY(3 * 1.5)", "4.5");
+    assert_output("DISPLAY(7 / 2.0)", "3.5");
+    assert_output("DISPLAY(0.5 + 1)", "1.5");
+}
+
+#[test]
+fn test_mixed_int_float_comparison() {
+    assert_output("DISPLAY(1 = 1.0)", "true");
+    assert_output("DISPLAY(2 > 1.5)", "true");
+    assert_output("DISPLAY(1.5 < 2)", "true");
+    assert_output("DISPLAY(3 >= 3.0)", "true");
+    assert_output("DISPLAY(3.0 <= 3)", "true");
+    assert_output("DISPLAY(1 NOT= 1.1)", "true");
+}
+
+#[test]
+fn test_nlog_alias() {
+    let result = run_test("DISPLAY(LOG(1))").unwrap();
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_modulo_basic() {
+    assert_output("DISPLAY(10 MOD 3)", "1");
+    assert_output("DISPLAY(15 MOD 5)", "0");
+    assert_output("DISPLAY(7 MOD 2)", "1");
+}
+
+#[test]
+fn test_modulo_by_zero_error() {
+    let err = get_error("DISPLAY(10 MOD 0)");
+    assert!(err.contains("Modulo by zero"), "{}", err);
+}
+
+#[test]
+fn test_unary_negation() {
+    assert_output("DISPLAY(-5)", "-5");
+    assert_output("DISPLAY(-(-3))", "3");
+    assert_output("x <- 10\nDISPLAY(-x)", "-10");
+    assert_output("DISPLAY(-2.5)", "-2.5");
+}
+
+#[test]
+fn test_zero_edge_cases() {
+    assert_output("DISPLAY(0 + 0)", "0");
+    assert_output("DISPLAY(0 * 999)", "0");
+    assert_output("DISPLAY(0 - 0)", "0");
 }

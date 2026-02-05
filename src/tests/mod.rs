@@ -15,8 +15,8 @@ mod strings;
 pub fn run_test(input: &str) -> Result<String, String> {
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize();
-    let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format())?;
-    let output = interpreter::run_with_source(ast, input).map_err(|e| e.format())?;
+    let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format(input))?;
+    let output = interpreter::run_with_source(ast, input).map_err(|e| e.format(input))?;
     Ok(output.trim_end().to_string())
 }
 
@@ -24,5 +24,12 @@ pub fn assert_output(input: &str, expected: &str) {
     match run_test(input) {
         Ok(output) => assert_eq!(output, expected),
         Err(e) => panic!("Test failed for input '{}': {}", input, e),
+    }
+}
+
+pub fn get_error(input: &str) -> String {
+    match run_test(input) {
+        Ok(output) => panic!("Expected error but got output: {}", output),
+        Err(e) => e,
     }
 }

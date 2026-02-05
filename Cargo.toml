@@ -33,7 +33,6 @@ rand = "0.9"
 chrono = { version = "0.4", optional = true }
 chrono-tz = { version = "0.10", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
-regex = "1.12"
 console_error_panic_hook = { version = "0.1", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

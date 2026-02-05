@@ -1,4 +1,4 @@
-use super::assert_output;
+use super::{assert_output, get_error, run_test};
 
 #[test]
 fn test_procedures() {
@@ -202,5 +202,176 @@ fn test_optional_parentheses() {
             IF (FALSE) { DISPLAY(5) } ELSE IF (TRUE) { DISPLAY(6) }
         "#,
         "1\n2\n4\n6",
+    );
+}
+
+#[test]
+fn test_procedure_scope_isolation() {
+    assert_output(
+        r#"
+            x <- 10
+            PROCEDURE setX()
+            {
+                x <- 99
+                DISPLAY(x)
+            }
+            setX()
+            DISPLAY(x)
+        "#,
+        "99\n10",
+    );
+}
+
+#[test]
+fn test_procedure_parameter_shadows_outer() {
+    assert_output(
+        r#"
+            x <- 100
+            PROCEDURE show(x)
+            {
+                DISPLAY(x)
+            }
+            show(42)
+        "#,
+        "42",
+    );
+}
+
+#[test]
+fn test_procedure_no_args() {
+    assert_output(
+        r#"
+            PROCEDURE greet()
+            {
+                DISPLAY("hello")
+            }
+            greet()
+        "#,
+        "hello",
+    );
+}
+
+#[test]
+fn test_procedure_returns_list() {
+    assert_output(
+        r#"
+            PROCEDURE makeList()
+            {
+                list <- [1, 2, 3]
+                RETURN(list)
+            }
+            result <- makeList()
+            DISPLAY(result)
+        "#,
+        "[1, 2, 3]",
+    );
+}
+
+#[test]
+fn test_mutual_recursion() {
+    assert_output(
+        r#"
+            PROCEDURE isEven(n)
+            {
+                IF(n = 0)
+                {
+                    RETURN(TRUE)
+                }
+                RETURN(isOdd(n - 1))
+            }
+            PROCEDURE isOdd(n)
+            {
+                IF(n = 0)
+                {
+                    RETURN(FALSE)
+                }
+                RETURN(isEven(n - 1))
+            }
+            DISPLAY(isEven(4))
+            DISPLAY(isOdd(3))
+        "#,
+        "true\ntrue",
+    );
+}
+
+#[test]
+fn test_procedure_with_list_arg() {
+    assert_output(
+        r#"
+            PROCEDURE sumList(lst)
+            {
+                total <- 0
+                FOR EACH item IN lst
+                {
+                    total <- total + item
+                }
+                RETURN(total)
+            }
+            nums <- [10, 20, 30]
+            DISPLAY(sumList(nums))
+        "#,
+        "60",
+    );
+}
+
+#[test]
+fn test_undefined_procedure_error() {
+    let err = get_error("doesNotExist()");
+    assert!(!err.is_empty(), "Expected error for undefined procedure");
+}
+
+#[test]
+fn test_procedure_wrong_arity_error() {
+    let result = run_test(
+        r#"
+            PROCEDURE add(a, b)
+            {
+                RETURN(a + b)
+            }
+            add(1)
+        "#,
+    );
+    assert!(
+        result.is_err(),
+        "Expected error for wrong number of arguments"
+    );
+}
+
+#[test]
+fn test_early_return_skips_rest() {
+    assert_output(
+        r#"
+            PROCEDURE earlyReturn()
+            {
+                DISPLAY("before")
+                RETURN()
+                DISPLAY("after")
+            }
+            earlyReturn()
+        "#,
+        "before",
+    );
+}
+
+#[test]
+fn test_return_from_loop() {
+    assert_output(
+        r#"
+            PROCEDURE findFirst(lst, target)
+            {
+                i <- 1
+                FOR EACH item IN lst
+                {
+                    IF(item = target)
+                    {
+                        RETURN(i)
+                    }
+                    i <- i + 1
+                }
+                RETURN(-1)
+            }
+            DISPLAY(findFirst([10, 20, 30, 40], 30))
+        "#,
+        "3",
     );
 }

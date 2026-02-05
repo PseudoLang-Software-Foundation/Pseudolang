@@ -106,8 +106,12 @@ fn test_merge_sort() {
 
 #[test]
 fn test_quick_sort() {
-    assert_output(
-        r#"
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .name("test-quick_sort".into())
+        .spawn(|| {
+            assert_output(
+                r#"
             PROCEDURE partition(arr, low, high) {
     pivot <- arr[high]
     i <- low - 1
@@ -142,8 +146,12 @@ PROCEDURE quickSort(arr, low, high) {
 arr <- [64, 34, 25, 12, 22, 11, 90]
 arr <- quickSort(arr, 1, LENGTH(arr))
 DISPLAY(arr)"#,
-        "[11, 12, 22, 25, 34, 64, 90]",
-    );
+                "[11, 12, 22, 25, 34, 64, 90]",
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]
