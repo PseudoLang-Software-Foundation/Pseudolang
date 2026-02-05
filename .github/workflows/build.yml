@@ -122,7 +122,6 @@ jobs:
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
             cp target/${{ matrix.target }}/release/fplc.exe release/fplc-x64.exe
             cp release/fplc-x64.exe installer/fplc.exe
-            cp LICENSE installer/
           elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
             cp target/${{ matrix.target }}/release/fplc release/fplc-linux-x64
             chmod +x release/fplc-linux-x64
@@ -134,11 +133,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nsis
 
+      - name: Extract Version
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: echo "VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*\"\(.*\)\".*/\1/')" >> $GITHUB_ENV
+
       - name: Build Windows Installer
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: |
           mkdir -p release/installer
-          makensis installer/pseudolang.nsi
+          makensis -DVERSION=${{ env.VERSION }} installer/pseudolang.nsi
           cp release/installer/pseudolang-setup-x64.exe release/
 
       - name: Upload Artifacts
