@@ -1563,8 +1563,8 @@ fn evaluate_node(
                     if min_int > max_int {
                         return Err("Min value must be less than or equal to max value".to_string());
                     }
-                    let mut rng = rand::thread_rng();
-                    Ok(Value::Integer(rng.gen_range(min_int..=max_int)))
+                    let mut rng = rand::rng();
+                    Ok(Value::Integer(rng.random_range(min_int..=max_int)))
                 }
                 _ => Err("RANDOM requires integer arguments".to_string()),
             }
