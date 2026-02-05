@@ -1,0 +1,5 @@
+# JFiles main entry point
+# Imports all src modules
+
+# Main commands
+mod src 'src/justfile'
