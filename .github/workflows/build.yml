@@ -96,19 +96,12 @@ jobs:
           makensis -DVERSION=${{ env.VERSION }} installer/pseudolang.nsi
           cp release/installer/pseudolang-setup-x64.exe release/
 
-      # --- WASM builds ---
+      # --- WASM build ---
 
-      - name: Build WASM (Raw)
+      - name: Build WASM
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
-          cargo build --release --target wasm32-unknown-unknown --features wasm
-          mkdir -p release
-          cp target/wasm32-unknown-unknown/release/fplc.wasm release/fplc-raw.wasm
-
-      - name: Build WASM (Bindgen)
-        if: matrix.target == 'wasm32-unknown-unknown'
-        run: |
-          wasm-pack build --target web --release -- --features "wasm bindgen"
+          wasm-pack build --target web --release -- --features wasm
           mkdir -p release/wasm-bindgen
           cp pkg/fplc_bg.wasm release/wasm-bindgen/
           cp pkg/fplc.js release/wasm-bindgen/
@@ -157,7 +150,6 @@ jobs:
           cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe release/ || true
           cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fplc-linux-x64 release/
           cp artifacts/pseudolang-wasm32-wasip1/fplc-wasi.wasm release/ || true
-          cp artifacts/pseudolang-wasm32-unknown-unknown/fplc-raw.wasm release/ || true
           cp artifacts/pseudolang-wasm32-unknown-unknown/wasm-bindgen.zip release/ || true
           chmod +x release/fplc-linux-x64
 
@@ -172,5 +164,4 @@ jobs:
             release/fplc-linux-x64
             release/pseudolang-setup-x64.exe
             release/fplc-wasi.wasm
-            release/fplc-raw.wasm
             release/wasm-bindgen.zip
