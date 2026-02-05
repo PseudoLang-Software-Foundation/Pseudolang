@@ -1,0 +1,40 @@
+import "../common.just"
+import "./build.just"
+import "./test.just"
+import "./run.just"
+
+# Default recipe
+default:
+  just --list
+
+# Display current version from Cargo.toml
+version:
+  @echo "{{VERSION}}"
+
+# Sync VERSION from Cargo.toml into wapm.toml
+version-sync:
+  cd {{ROOT}} && sed -i 's/^version = ".*"/version = "{{VERSION}}"/' wapm.toml
+  @echo "Synced version {{VERSION}} to wapm.toml"
+
+# Install build toolchain and targets
+install:
+  cargo install cross
+  cargo install taplo-cli
+  rustup target add wasm32-unknown-unknown wasm32-wasip1
+  curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Amend no edit
+amend:
+  git commit --amend --no-edit
+
+# Force push
+fp:
+  git push -f --force-with-lease
+
+# Amend and force push
+afp:
+  git commit --amend --no-edit && git push -f --force-with-lease
+
+# Add, amend and force push
+aafp:
+  git add . && git commit --amend --no-edit && git push -f --force-with-lease
