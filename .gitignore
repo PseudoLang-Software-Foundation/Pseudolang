@@ -1,5 +1,29 @@
-*/.vscode
-/target
-/release
-*fplc*
-/pkg
+# Rust / Cargo
+/target/
+**/*.rs.bk
+
+# Build artifacts
+/release/
+/pkg/
+installer/fplc.exe
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# AI
+.claude/
+.cursor/
+AGENTS.md
+agents.md
+claude.md
+gemini.md
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
