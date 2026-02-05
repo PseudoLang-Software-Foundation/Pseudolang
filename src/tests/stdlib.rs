@@ -178,3 +178,39 @@ fn test_timezone_functions() {
         .is_err()
     );
 }
+
+#[test]
+fn test_range_basic() {
+    assert_output("DISPLAY(RANGE(5))", "[1, 2, 3, 4, 5]");
+    assert_output("DISPLAY(RANGE(1, 5))", "[1, 2, 3, 4, 5]");
+    assert_output("DISPLAY(RANGE(3, 6))", "[3, 4, 5, 6]");
+}
+
+#[test]
+fn test_range_single_element() {
+    assert_output("DISPLAY(RANGE(1))", "[1]");
+    assert_output("DISPLAY(RANGE(3, 3))", "[3]");
+}
+
+#[test]
+fn test_eval_variable_scope() {
+    assert_output(
+        r#"
+            x <- 10
+            y <- 20
+            DISPLAY(EVAL("x + y"))
+        "#,
+        "30",
+    );
+}
+
+#[test]
+fn test_eval_string_expression() {
+    assert_output(r#"DISPLAY(EVAL("2 * 3 + 4"))"#, "10");
+}
+
+#[test]
+fn test_millitime() {
+    let result = run_test("x <- MILLITIME()\nDISPLAY(x > 0)").unwrap();
+    assert_eq!(result, "true");
+}

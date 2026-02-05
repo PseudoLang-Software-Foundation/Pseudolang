@@ -1,4 +1,4 @@
-use super::assert_output;
+use super::{assert_output, run_test};
 
 #[test]
 fn test_display() {
@@ -273,4 +273,72 @@ fn test_boolean_operations_complex() {
             "#,
         "true\nfalse\nfalse",
     );
+}
+
+#[test]
+fn test_empty_display() {
+    assert_output("DISPLAY()", "");
+}
+
+#[test]
+fn test_display_empty_line_between() {
+    assert_output("DISPLAY(1)\nDISPLAY()\nDISPLAY(2)", "1\n\n2");
+}
+
+#[test]
+fn test_display_multiline_program() {
+    assert_output("DISPLAY(1)\nDISPLAY(2)\nDISPLAY(3)", "1\n2\n3");
+}
+
+#[test]
+fn test_variable_reassignment() {
+    assert_output("x <- 1\nx <- 2\nx <- 3\nDISPLAY(x)", "3");
+}
+
+#[test]
+fn test_variable_self_reference() {
+    assert_output("x <- 5\nx <- x + 1\nDISPLAY(x)", "6");
+    assert_output("x <- 10\nx <- x * x\nDISPLAY(x)", "100");
+}
+
+#[test]
+fn test_tostring_types() {
+    assert_output("DISPLAY(TOSTRING(42))", "42");
+    assert_output("DISPLAY(TOSTRING(3.14))", "3.14");
+    assert_output("DISPLAY(TOSTRING(TRUE))", "true");
+    assert_output("DISPLAY(TOSTRING(FALSE))", "false");
+}
+
+#[test]
+fn test_tonum_float_string() {
+    assert_output("DISPLAY(TONUM(\"3.14\"))", "3.14");
+    assert_output("DISPLAY(TONUM(\"0\"))", "0");
+    assert_output("DISPLAY(TONUM(\"-5\"))", "-5");
+}
+
+#[test]
+fn test_tonum_invalid() {
+    assert!(run_test("DISPLAY(TONUM(\"abc\"))").is_err());
+    assert!(run_test("DISPLAY(TONUM(42))").is_err());
+}
+
+#[test]
+fn test_null_display() {
+    assert_output("DISPLAY(NULL)", "NULL");
+}
+
+#[test]
+fn test_nan_display() {
+    assert_output("DISPLAY(NAN)", "NAN");
+}
+
+#[test]
+fn test_boolean_not_operator() {
+    assert_output("DISPLAY(NOT TRUE)", "false");
+    assert_output("DISPLAY(NOT FALSE)", "true");
+}
+
+#[test]
+fn test_comment_does_not_affect_code() {
+    assert_output("x <- 10 COMMENT this is x\nDISPLAY(x)", "10");
 }

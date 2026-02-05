@@ -6,9 +6,9 @@
 
 Evaluates b and then assigns a copy of the result to the variable a
 
-`DISPLAY(a)`
+`DISPLAY(a)` or `DISPLAY()`
 
-Prints the value of a.
+Prints the value of a followed by a newline. When called with no arguments, prints an empty line.
 
 `DISPLAYINLINE(a)`
 
@@ -22,7 +22,7 @@ Accepts a value from the user (command line) and returns the input value.
 Converts an integer/float data type to a string.
 
 `TONUM(a)`
-Covnerts a string to an integer or a float.
+Converts a string to an integer or a float.
 
 ## Mathematical Procedures
 
@@ -34,13 +34,13 @@ Covnerts a string to an integer or a float.
 
 `a / b`
 
-Integer division that rounds down (floor division). For example:
+Integer division that truncates toward zero. For example:
 
 - `5 / 2` evaluates to `2`
 - `-5 / 2` evaluates to `-2`
 - `19 / 4` evaluates to `4`
 
-When operating on two integers, the result will always be an integer, rounded down to the nearest whole number.
+When operating on two integers, the result will always be an integer with the fractional part discarded (truncated toward zero). When either operand is a float, the result is a float with standard floating-point division.
 
 `a MOD b`
 
@@ -98,9 +98,9 @@ Returns the arc tangent of x, in radians.
 
 Returns e raised to the power x.
 
-`LOG(x)`
+`LOG(x)` / `NLOG(x)`
 
-Returns the natural logarithm of x.
+Returns the natural logarithm (ln) of x.
 
 `LOGTEN(x)`
 
@@ -210,7 +210,7 @@ REPEAT UNTIL(a)
 }
 ```
 
-The code in block of statements is repeated until the Boolean expression a evaluates to true.
+The code in the block of statements is executed first, then the Boolean expression a is evaluated. If a is false, the block executes again. This repeats until a evaluates to true. The body always executes at least once (do-while semantics).
 
 ## List operations
 
@@ -253,7 +253,7 @@ Evaluates to the number of elements in aList (1 through length).
 
 `SORT(aList)`
 
-Returns a new list that is a sorted version of `aList` (must be an array of integers). The sorting is done in ascending order.
+Returns a new list that is a sorted version of `aList`. The sorting is done in ascending order. Supports lists of integers, floats, mixed numeric types, and strings (sorted lexicographically).
 
 `RANGE(start (optional), end)`
 
@@ -302,7 +302,20 @@ Defines procName as a procedure that takes zero or more arguments. The procedure
 
 `RETURN (a)` or `RETURN` or `RETURN ()`
 
-Returns the flow of control to the point where the procedure was called without returning a value. When a procedure executes a value-less return or reaches its end without an explicit return value, displaying the procedure's result will show nothing.
+Returns the flow of control to the point where the procedure was called and optionally returns a value. When a procedure executes a value-less return or reaches its end without an explicit return value, displaying the procedure's result will show nothing.
+
+Procedures have their own scope. Variables assigned inside a procedure are local to that procedure and do not modify variables of the same name in the calling scope. Parameters shadow any outer variables with the same name. Procedures defined at the top level are visible to all other procedures (including mutually recursive calls).
+
+```psl
+x <- 10
+PROCEDURE setX()
+{
+    x <- 99
+    DISPLAY(x) COMMENT Displays 99
+}
+setX()
+DISPLAY(x) COMMENT Displays 10 (outer x unchanged)
+```
 
 `SUBSTRING("abcd", start, end)`
 Returns a string of characters from index `start` to index `end` of the given string
@@ -392,13 +405,13 @@ A comment (multi-line or single-line), anything on the line after this or in bet
 Imports a library (including functions & variables defined in that file) from a file.
 
 ```psl
-CLASS className()
+CLASS className
 {
   ...procs
 }
 ```
 
-Creates a class object
+**Planned feature (not yet implemented).** Class declarations are parsed but instantiation, method dispatch, and field access are not yet supported. Using CLASS will produce a runtime error.
 
 `r"a"`
 
@@ -424,7 +437,7 @@ Converts a datetime string in format "YYYY-MM-DD HH:MM:SS.ffffff" to Unix timest
 
 Converts a Unix timestamp to a datetime string in format "YYYY-MM-DD HH:MM:SS.ffffff" in local time.
 
-`TIMEZONE(timestamp, timezone)`  
+`TIMEZONE(timestamp, timezone)`
 Converts a Unix timestamp to a datetime string in the specified timezone.
 Example timezones: "America/New_York", "Europe/London", "Asia/Tokyo"
 

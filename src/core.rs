@@ -13,7 +13,8 @@ pub fn execute_code(source_code: &str, debug: bool, return_output: bool) -> Resu
         println!("\n=== Parser Starting ===");
     }
 
-    let ast = parser::parse_with_source(tokens, source_code, debug).map_err(|e| e.format())?;
+    let ast =
+        parser::parse_with_source(tokens, source_code, debug).map_err(|e| e.format(source_code))?;
 
     if debug {
         println!("\n=== Parser Output ===");
@@ -23,10 +24,7 @@ pub fn execute_code(source_code: &str, debug: bool, return_output: bool) -> Resu
 
     let output = match interpreter::run_with_source(ast, source_code) {
         Ok(output) => output,
-        Err(e) => {
-            let err_str = e.format();
-            return Err(err_str);
-        }
+        Err(e) => return Err(e.format(source_code)),
     };
 
     if !return_output {
@@ -47,7 +45,7 @@ pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, Str
         writeln!(output, "\n=== Parser Starting ===").unwrap();
     }
 
-    let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format())?;
+    let ast = parser::parse_with_source(tokens, input, false).map_err(|e| e.format(input))?;
 
     if debug {
         writeln!(output, "\n=== Parser Output ===").unwrap();
@@ -57,7 +55,7 @@ pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, Str
 
     let program_output = match interpreter::run_with_source(ast, input) {
         Ok(output) => output,
-        Err(e) => return Err(e.format()),
+        Err(e) => return Err(e.format(input)),
     };
 
     writeln!(output, "{}", program_output).unwrap();

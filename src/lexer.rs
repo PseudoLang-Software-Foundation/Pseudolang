@@ -1,4 +1,4 @@
-use crate::error::SourceTracker;
+use crate::error::Span;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -95,8 +95,6 @@ pub struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
     input: &'a str,
     pos: usize,
-    #[allow(dead_code)]
-    source_tracker: SourceTracker,
 }
 
 impl<'a> Lexer<'a> {
@@ -105,13 +103,12 @@ impl<'a> Lexer<'a> {
             chars: input.chars().peekable(),
             input,
             pos: 0,
-            source_tracker: SourceTracker::new(input),
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<Token> {
+    pub fn tokenize(&mut self) -> Vec<(Token, Span)> {
         let mut tokens = Vec::new();
-        while let Some(token) = self.next_token() {
+        while let Some((token, span)) = self.next_token() {
             match token {
                 Token::Comment => {
                     for c in self.chars.by_ref() {
@@ -141,14 +138,15 @@ impl<'a> Lexer<'a> {
                     }
                     continue;
                 }
-                _ => tokens.push(token),
+                _ => tokens.push((token, span)),
             }
         }
         tokens
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Option<(Token, Span)> {
         let next_char = self.chars.next()?;
+        let token_start = self.pos;
         self.pos += 1;
 
         match next_char {
@@ -165,45 +163,45 @@ impl<'a> Lexer<'a> {
                     }
                     self.next_token()
                 } else {
-                    Some(Token::Divide)
+                    Some((Token::Divide, Span::new(token_start, self.pos)))
                 }
             }
 
-            '\n' => Some(Token::Newline),
+            '\n' => Some((Token::Newline, Span::new(token_start, self.pos))),
             ' ' | '\t' | '\r' => self.next_token(),
-            '{' => Some(Token::OpenBrace),
-            '}' => Some(Token::CloseBrace),
-            '=' => Some(Token::Equal),
+            '{' => Some((Token::OpenBrace, Span::new(token_start, self.pos))),
+            '}' => Some((Token::CloseBrace, Span::new(token_start, self.pos))),
+            '=' => Some((Token::Equal, Span::new(token_start, self.pos))),
             '>' => {
                 if self.chars.peek() == Some(&'=') {
                     self.chars.next();
                     self.pos += 1;
-                    Some(Token::GreaterThanOrEqual)
+                    Some((Token::GreaterThanOrEqual, Span::new(token_start, self.pos)))
                 } else {
-                    Some(Token::GreaterThan)
+                    Some((Token::GreaterThan, Span::new(token_start, self.pos)))
                 }
             }
             '<' => {
                 if self.chars.peek() == Some(&'-') {
                     self.chars.next();
                     self.pos += 1;
-                    Some(Token::Assign)
+                    Some((Token::Assign, Span::new(token_start, self.pos)))
                 } else if self.chars.peek() == Some(&'=') {
                     self.chars.next();
                     self.pos += 1;
-                    Some(Token::LessThanOrEqual)
+                    Some((Token::LessThanOrEqual, Span::new(token_start, self.pos)))
                 } else {
-                    Some(Token::LessThan)
+                    Some((Token::LessThan, Span::new(token_start, self.pos)))
                 }
             }
-            '+' => Some(Token::Plus),
-            '-' => Some(Token::Minus),
-            '*' => Some(Token::Multiply),
-            '(' => Some(Token::OpenParen),
-            ')' => Some(Token::CloseParen),
-            '[' => Some(Token::OpenBracket),
-            ']' => Some(Token::CloseBracket),
-            ',' => Some(Token::Comma),
+            '+' => Some((Token::Plus, Span::new(token_start, self.pos))),
+            '-' => Some((Token::Minus, Span::new(token_start, self.pos))),
+            '*' => Some((Token::Multiply, Span::new(token_start, self.pos))),
+            '(' => Some((Token::OpenParen, Span::new(token_start, self.pos))),
+            ')' => Some((Token::CloseParen, Span::new(token_start, self.pos))),
+            '[' => Some((Token::OpenBracket, Span::new(token_start, self.pos))),
+            ']' => Some((Token::CloseBracket, Span::new(token_start, self.pos))),
+            ',' => Some((Token::Comma, Span::new(token_start, self.pos))),
 
             'r' if self.chars.peek() == Some(&'"') => {
                 self.chars.next();
@@ -216,7 +214,7 @@ impl<'a> Lexer<'a> {
                     }
                     string.push(c);
                 }
-                Some(Token::RawString(string))
+                Some((Token::RawString(string), Span::new(token_start, self.pos)))
             }
 
             'f' if self.chars.peek() == Some(&'"') => {
@@ -254,7 +252,10 @@ impl<'a> Lexer<'a> {
                         string.push(c);
                     }
                 }
-                Some(Token::FormattedString(string, vars))
+                Some((
+                    Token::FormattedString(string, vars),
+                    Span::new(token_start, self.pos),
+                ))
             }
 
             '"' => {
@@ -276,7 +277,10 @@ impl<'a> Lexer<'a> {
                         }
                         string.push(c);
                     }
-                    Some(Token::MultilineString(string))
+                    Some((
+                        Token::MultilineString(string),
+                        Span::new(token_start, self.pos),
+                    ))
                 } else {
                     let mut string = String::new();
                     while let Some(c) = self.chars.next() {
@@ -300,7 +304,7 @@ impl<'a> Lexer<'a> {
                             string.push(c);
                         }
                     }
-                    Some(Token::String(string))
+                    Some((Token::String(string), Span::new(token_start, self.pos)))
                 }
             }
 
@@ -323,10 +327,11 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
+                let span = Span::new(token_start, self.pos);
                 if is_float {
-                    Some(Token::Float(number.parse().unwrap()))
+                    Some((Token::Float(number.parse().unwrap()), span))
                 } else {
-                    Some(Token::Integer(number.parse().unwrap()))
+                    Some((Token::Integer(number.parse().unwrap()), span))
                 }
             }
 
@@ -342,20 +347,21 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
-                match identifier.as_str() {
-                    "NULL" => Some(Token::Null),
-                    "NAN" => Some(Token::NaN),
+                let token = match identifier.as_str() {
+                    "NULL" => Token::Null,
+                    "NAN" => Token::NaN,
                     "NOT" => {
                         if self.chars.peek() == Some(&'=') {
                             self.chars.next();
                             self.pos += 1;
-                            Some(Token::NotEqual)
+                            Token::NotEqual
                         } else {
-                            Some(Token::Not)
+                            Token::Not
                         }
                     }
-                    _ => Some(Token::Identifier(identifier)),
-                }
+                    _ => Token::Identifier(identifier),
+                };
+                Some((token, Span::new(token_start, self.pos)))
             }
 
             c @ ('a'..='z' | 'A'..='Z') => {
@@ -371,10 +377,11 @@ impl<'a> Lexer<'a> {
                 }
 
                 match identifier.as_str() {
-                    "NULL" => Some(Token::Null),
-                    "NAN" => Some(Token::NaN),
-                    "MOD" => Some(Token::Modulo),
+                    "NULL" => Some((Token::Null, Span::new(token_start, self.pos))),
+                    "NAN" => Some((Token::NaN, Span::new(token_start, self.pos))),
+                    "MOD" => Some((Token::Modulo, Span::new(token_start, self.pos))),
                     "DISPLAY" => {
+                        let before_ws = self.pos;
                         while let Some(&c) = self.chars.peek() {
                             if c.is_whitespace() {
                                 self.chars.next();
@@ -395,59 +402,80 @@ impl<'a> Lexer<'a> {
                                 }
                                 string.push(c);
                             }
-                            Some(Token::Display(Some(Box::new(Token::String(string)))))
+                            Some((
+                                Token::Display(Some(Box::new(Token::String(string)))),
+                                Span::new(token_start, self.pos),
+                            ))
                         } else {
-                            Some(Token::Display(None))
+                            self.pos = before_ws;
+                            // Reset chars iterator to before whitespace
+                            // Actually, we already consumed whitespace. Restore pos for span only.
+                            Some((Token::Display(None), Span::new(token_start, before_ws)))
                         }
                     }
-                    "DISPLAYINLINE" => Some(Token::DisplayInline),
-                    "INPUT" => Some(Token::Input),
-                    "IF" => Some(Token::If),
-                    "ELSE" => Some(Token::Else),
-                    "REPEAT" => Some(Token::Repeat),
-                    "NOT" => Some(Token::Not),
-                    "AND" => Some(Token::And),
-                    "OR" => Some(Token::Or),
-                    "COMMENT" => Some(Token::Comment),
-                    "COMMENTBLOCK" => Some(Token::CommentBlock),
-                    "RETURN" => Some(Token::Return),
-                    "TRUE" => Some(Token::Boolean(true)),
-                    "FALSE" => Some(Token::Boolean(false)),
-                    "CLASS" => Some(Token::Class),
-                    "TOSTRING" => Some(Token::ToString),
-                    "TONUM" => Some(Token::ToNum),
-                    "FOR" => Some(Token::For),
-                    "TRIM" => Some(Token::Identifier("TRIM".to_string())),
-                    "REPLACE" => Some(Token::Identifier("REPLACE".to_string())),
-                    "UPPERCASE" => Some(Token::Identifier("UPPERCASE".to_string())),
-                    "LOWERCASE" => Some(Token::Identifier("LOWERCASE".to_string())),
-                    "EACH" => Some(Token::Each),
-                    "IN" => Some(Token::In),
-                    "PROCEDURE" => Some(Token::Procedure),
-                    "SUBSTRING" => Some(Token::Substring),
-                    "CONCAT" => Some(Token::Concat),
-                    "IMPORT" => Some(Token::Import),
-                    "UNTIL" => Some(Token::Until),
-                    "TIMES" => Some(Token::Times),
-                    "NOT=" => Some(Token::NotEqual),
-                    "INSERT" => Some(Token::ListInsert),
-                    "APPEND" => Some(Token::ListAppend),
-                    "REMOVE" => Some(Token::ListRemove),
-                    "LENGTH" => Some(Token::ListLength),
-                    "RANDOM" => Some(Token::Random),
-                    "SORT" => Some(Token::Sort),
-                    "TRY" => Some(Token::Try),
-                    "CATCH" => Some(Token::Catch),
-                    "EVAL" => Some(Token::Eval),
-                    _ => Some(Token::Identifier(identifier)),
+                    "DISPLAYINLINE" => {
+                        Some((Token::DisplayInline, Span::new(token_start, self.pos)))
+                    }
+                    "INPUT" => Some((Token::Input, Span::new(token_start, self.pos))),
+                    "IF" => Some((Token::If, Span::new(token_start, self.pos))),
+                    "ELSE" => Some((Token::Else, Span::new(token_start, self.pos))),
+                    "REPEAT" => Some((Token::Repeat, Span::new(token_start, self.pos))),
+                    "NOT" => Some((Token::Not, Span::new(token_start, self.pos))),
+                    "AND" => Some((Token::And, Span::new(token_start, self.pos))),
+                    "OR" => Some((Token::Or, Span::new(token_start, self.pos))),
+                    "COMMENT" => Some((Token::Comment, Span::new(token_start, self.pos))),
+                    "COMMENTBLOCK" => Some((Token::CommentBlock, Span::new(token_start, self.pos))),
+                    "RETURN" => Some((Token::Return, Span::new(token_start, self.pos))),
+                    "TRUE" => Some((Token::Boolean(true), Span::new(token_start, self.pos))),
+                    "FALSE" => Some((Token::Boolean(false), Span::new(token_start, self.pos))),
+                    "CLASS" => Some((Token::Class, Span::new(token_start, self.pos))),
+                    "TOSTRING" => Some((Token::ToString, Span::new(token_start, self.pos))),
+                    "TONUM" => Some((Token::ToNum, Span::new(token_start, self.pos))),
+                    "FOR" => Some((Token::For, Span::new(token_start, self.pos))),
+                    "TRIM" => Some((
+                        Token::Identifier("TRIM".to_string()),
+                        Span::new(token_start, self.pos),
+                    )),
+                    "REPLACE" => Some((
+                        Token::Identifier("REPLACE".to_string()),
+                        Span::new(token_start, self.pos),
+                    )),
+                    "UPPERCASE" => Some((
+                        Token::Identifier("UPPERCASE".to_string()),
+                        Span::new(token_start, self.pos),
+                    )),
+                    "LOWERCASE" => Some((
+                        Token::Identifier("LOWERCASE".to_string()),
+                        Span::new(token_start, self.pos),
+                    )),
+                    "EACH" => Some((Token::Each, Span::new(token_start, self.pos))),
+                    "IN" => Some((Token::In, Span::new(token_start, self.pos))),
+                    "PROCEDURE" => Some((Token::Procedure, Span::new(token_start, self.pos))),
+                    "SUBSTRING" => Some((Token::Substring, Span::new(token_start, self.pos))),
+                    "CONCAT" => Some((Token::Concat, Span::new(token_start, self.pos))),
+                    "IMPORT" => Some((Token::Import, Span::new(token_start, self.pos))),
+                    "UNTIL" => Some((Token::Until, Span::new(token_start, self.pos))),
+                    "TIMES" => Some((Token::Times, Span::new(token_start, self.pos))),
+                    "NOT=" => Some((Token::NotEqual, Span::new(token_start, self.pos))),
+                    "INSERT" => Some((Token::ListInsert, Span::new(token_start, self.pos))),
+                    "APPEND" => Some((Token::ListAppend, Span::new(token_start, self.pos))),
+                    "REMOVE" => Some((Token::ListRemove, Span::new(token_start, self.pos))),
+                    "LENGTH" => Some((Token::ListLength, Span::new(token_start, self.pos))),
+                    "RANDOM" => Some((Token::Random, Span::new(token_start, self.pos))),
+                    "SORT" => Some((Token::Sort, Span::new(token_start, self.pos))),
+                    "TRY" => Some((Token::Try, Span::new(token_start, self.pos))),
+                    "CATCH" => Some((Token::Catch, Span::new(token_start, self.pos))),
+                    "EVAL" => Some((Token::Eval, Span::new(token_start, self.pos))),
+                    _ => Some((
+                        Token::Identifier(identifier),
+                        Span::new(token_start, self.pos),
+                    )),
                 }
             }
-            _ => Some(Token::Identifier(next_char.to_string())),
+            _ => Some((
+                Token::Identifier(next_char.to_string()),
+                Span::new(token_start, self.pos),
+            )),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn get_source_tracker(&self) -> &SourceTracker {
-        &self.source_tracker
     }
 }

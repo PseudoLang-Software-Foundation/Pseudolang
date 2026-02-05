@@ -301,3 +301,81 @@ fn test_matrix_operations() {
         "two\ntrue\n4.5",
     );
 }
+
+#[test]
+fn test_empty_list() {
+    assert_output("list <- []\nDISPLAY(LENGTH(list))", "0");
+    assert_output("list <- []\nAPPEND(list, 1)\nDISPLAY(list)", "[1]");
+}
+
+#[test]
+fn test_list_concatenation_with_plus() {
+    assert_output(
+        "a <- [1, 2, 3]\nb <- [4, 5, 6]\nc <- a + b\nDISPLAY(c)",
+        "[1, 2, 3, 4, 5, 6]",
+    );
+}
+
+#[test]
+fn test_list_concatenation_empty() {
+    assert_output("a <- [1, 2]\nb <- []\nc <- a + b\nDISPLAY(c)", "[1, 2]");
+    assert_output("a <- []\nb <- [3, 4]\nc <- a + b\nDISPLAY(c)", "[3, 4]");
+}
+
+#[test]
+fn test_list_single_element() {
+    assert_output("list <- [42]\nDISPLAY(list[1])", "42");
+    assert_output("list <- [42]\nDISPLAY(LENGTH(list))", "1");
+}
+
+#[test]
+fn test_list_nested_access() {
+    assert_output("matrix <- [[1, 2], [3, 4]]\nDISPLAY(matrix[1][1])", "1");
+    assert_output("matrix <- [[1, 2], [3, 4]]\nDISPLAY(matrix[2][2])", "4");
+}
+
+#[test]
+fn test_list_of_strings() {
+    assert_output("list <- [\"a\", \"b\", \"c\"]\nDISPLAY(list[2])", "b");
+}
+
+#[test]
+fn test_list_of_booleans() {
+    assert_output("list <- [TRUE, FALSE, TRUE]\nDISPLAY(list[1])", "true");
+}
+
+#[test]
+fn test_list_mixed_types() {
+    assert_output(
+        "list <- [1, \"two\", TRUE, 4.5]\nDISPLAY(LENGTH(list))",
+        "4",
+    );
+}
+
+#[test]
+fn test_sort_already_sorted() {
+    assert_output("DISPLAY(SORT([1, 2, 3]))", "[1, 2, 3]");
+}
+
+#[test]
+fn test_sort_reverse_order() {
+    assert_output("DISPLAY(SORT([3, 2, 1]))", "[1, 2, 3]");
+}
+
+#[test]
+fn test_sort_single_element() {
+    assert_output("DISPLAY(SORT([5]))", "[5]");
+}
+
+#[test]
+fn test_sort_strings() {
+    assert_output(
+        "DISPLAY(SORT([\"banana\", \"apple\", \"cherry\"]))",
+        "[apple, banana, cherry]",
+    );
+}
+
+#[test]
+fn test_sort_duplicates() {
+    assert_output("DISPLAY(SORT([3, 1, 2, 1, 3]))", "[1, 1, 2, 3, 3]");
+}

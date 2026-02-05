@@ -388,3 +388,93 @@ fn test_replace() {
 
     assert_output(r#"DISPLAY(REPLACE("aaa", "a", "b"))"#, "bbb");
 }
+
+#[test]
+fn test_string_concatenation_with_plus() {
+    assert_output(r#"DISPLAY("hello" + " " + "world")"#, "hello world");
+    assert_output(r#"DISPLAY("" + "abc")"#, "abc");
+    assert_output(r#"DISPLAY("abc" + "")"#, "abc");
+}
+
+#[test]
+fn test_empty_string_operations() {
+    assert_output(r#"DISPLAY(LENGTH(""))"#, "0");
+    assert_output(r#"DISPLAY(UPPERCASE(""))"#, "");
+    assert_output(r#"DISPLAY(LOWERCASE(""))"#, "");
+    assert_output(r#"DISPLAY(TRIM(""))"#, "");
+}
+
+#[test]
+fn test_contains_edge_cases() {
+    assert_output(r#"DISPLAY(CONTAINS("hello", ""))"#, "true");
+    assert_output(r#"DISPLAY(CONTAINS("", "a"))"#, "false");
+    assert_output(r#"DISPLAY(CONTAINS("", ""))"#, "true");
+    assert_output(r#"DISPLAY(CONTAINS("abcabc", "abc"))"#, "true");
+}
+
+#[test]
+fn test_find_edge_cases() {
+    assert_output(r#"DISPLAY(FIND("hello", "xyz"))"#, "-1");
+    assert_output(r#"DISPLAY(FIND("hello", "h"))"#, "1");
+    assert_output(r#"DISPLAY(FIND("hello", "o"))"#, "5");
+}
+
+#[test]
+fn test_split_edge_cases() {
+    assert_output(r#"DISPLAY(SPLIT("a,b,c", ","))"#, "[a, b, c]");
+    assert_output(r#"DISPLAY(SPLIT("hello", ","))"#, "[hello]");
+}
+
+#[test]
+fn test_substring_boundary() {
+    assert_output(r#"DISPLAY(SUBSTRING("abcde", 1, 5))"#, "abcde");
+    assert_output(r#"DISPLAY(SUBSTRING("abcde", 3, 3))"#, "c");
+    assert_output(r#"DISPLAY(SUBSTRING("abcde", 1, 1))"#, "a");
+}
+
+#[test]
+fn test_startswith_endswith_edge() {
+    assert_output(r#"DISPLAY(STARTSWITH("hello", "hello"))"#, "true");
+    assert_output(r#"DISPLAY(ENDSWITH("hello", "hello"))"#, "true");
+    assert_output(r#"DISPLAY(STARTSWITH("hello", ""))"#, "true");
+    assert_output(r#"DISPLAY(ENDSWITH("hello", ""))"#, "true");
+}
+
+#[test]
+fn test_length_on_string_vs_list() {
+    assert_output(r#"DISPLAY(LENGTH("hello"))"#, "5");
+    assert_output("DISPLAY(LENGTH([1, 2, 3]))", "3");
+}
+
+#[test]
+fn test_formatted_string_expression() {
+    assert_output(
+        r#"
+            x <- 5
+            y <- 10
+            DISPLAY(f"sum is {x + y}")
+        "#,
+        "sum is 15",
+    );
+}
+
+#[test]
+fn test_formatted_string_nested() {
+    assert_output(
+        r#"
+            name <- "world"
+            DISPLAY(f"hello {name}!")
+        "#,
+        "hello world!",
+    );
+}
+
+#[test]
+fn test_raw_string_no_escape() {
+    assert_output(r#"DISPLAY(r"hello\nworld")"#, "hello\\nworld");
+}
+
+#[test]
+fn test_replace_no_match() {
+    assert_output(r#"DISPLAY(REPLACE("hello", "xyz", "abc"))"#, "hello");
+}
