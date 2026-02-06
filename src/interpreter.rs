@@ -50,6 +50,7 @@ struct Environment {
     output: String,
     parent: Option<Rc<RefCell<Environment>>>,
     call_stack: Rc<RefCell<Vec<StackFrame>>>,
+    parsed_flags: Rc<HashMap<String, String>>,
 }
 
 impl Environment {
@@ -60,18 +61,21 @@ impl Environment {
             output: String::new(),
             parent: None,
             call_stack: Rc::new(RefCell::new(Vec::new())),
+            parsed_flags: Rc::new(HashMap::new()),
         }
     }
 
     fn new_with_parent(parent: Rc<RefCell<Environment>>) -> Self {
         let procedures = parent.borrow().procedures.clone();
         let call_stack = Rc::clone(&parent.borrow().call_stack);
+        let parsed_flags = Rc::clone(&parent.borrow().parsed_flags);
         Environment {
             variables: HashMap::new(),
             procedures,
             output: String::new(),
             parent: Some(Rc::clone(&parent)),
             call_stack,
+            parsed_flags,
         }
     }
 
@@ -110,9 +114,59 @@ impl Environment {
     }
 }
 
+fn parse_program_args(raw: &[String]) -> (HashMap<String, String>, Vec<String>) {
+    let mut flags = HashMap::new();
+    let mut positionals = Vec::new();
+    let mut i = 0;
+    while i < raw.len() {
+        let arg = &raw[i];
+        if let Some(key) = arg.strip_prefix("--") {
+            if i + 1 < raw.len() && !raw[i + 1].starts_with('-') {
+                flags.insert(key.to_string(), raw[i + 1].clone());
+                i += 2;
+            } else {
+                flags.insert(key.to_string(), "true".to_string());
+                i += 1;
+            }
+        } else if let Some(key) = arg.strip_prefix('-') {
+            if i + 1 < raw.len() && !raw[i + 1].starts_with('-') {
+                flags.insert(key.to_string(), raw[i + 1].clone());
+                i += 2;
+            } else {
+                flags.insert(key.to_string(), "true".to_string());
+                i += 1;
+            }
+        } else {
+            positionals.push(arg.clone());
+            i += 1;
+        }
+    }
+    (flags, positionals)
+}
+
+fn init_env_with_args(env: &Rc<RefCell<Environment>>, args: &[String]) {
+    let (flags, positionals) = parse_program_args(args);
+
+    let args_list = args.iter().map(|a| Value::String(a.clone())).collect();
+    let positionals_list = positionals
+        .iter()
+        .map(|p| Value::String(p.clone()))
+        .collect();
+
+    let mut env_mut = env.borrow_mut();
+    env_mut.set("ARGS".to_string(), Value::List(args_list));
+    env_mut.set(
+        "ARGCOUNT".to_string(),
+        Value::Integer(BigInt::from(args.len())),
+    );
+    env_mut.set("POSITIONALS".to_string(), Value::List(positionals_list));
+    env_mut.parsed_flags = Rc::new(flags);
+}
+
 #[allow(dead_code)]
 pub fn run(ast: Spanned) -> Result<String, String> {
     let env = Rc::new(RefCell::new(Environment::new()));
+    init_env_with_args(&env, &[]);
     match evaluate_node(&ast, Rc::clone(&env), false) {
         Ok(_) => Ok(env.borrow().output.clone()),
         Err(Interruption::Return(_)) => Ok(env.borrow().output.clone()),
@@ -120,8 +174,9 @@ pub fn run(ast: Spanned) -> Result<String, String> {
     }
 }
 
-pub fn run_with_source(ast: Spanned, _source: &str) -> Result<String, PSLError> {
+pub fn run_with_source(ast: Spanned, _source: &str, args: &[String]) -> Result<String, PSLError> {
     let env = Rc::new(RefCell::new(Environment::new()));
+    init_env_with_args(&env, args);
     match evaluate_node(&ast, Rc::clone(&env), false) {
         Ok(_) => Ok(env.borrow().output.clone()),
         Err(Interruption::Return(_)) => Ok(env.borrow().output.clone()),
@@ -1002,6 +1057,8 @@ fn eval_builtin(
         "RANGE" => Some(eval_builtin_range(args, env, span, debug)),
         "STARTSWITH" => Some(eval_builtin_startswith(args, env, span, debug)),
         "ENDSWITH" => Some(eval_builtin_endswith(args, env, span, debug)),
+        "HASARG" => Some(eval_builtin_hasarg(args, env, span, debug)),
+        "GETARG" => Some(eval_builtin_getarg(args, env, span, debug)),
         _ => None,
     }
 }
@@ -1865,6 +1922,58 @@ fn eval_builtin_endswith(
         (Value::String(s), Value::String(sub)) => Ok(Value::Boolean(s.ends_with(&sub))),
         _ => Err(runtime_err(
             "ENDSWITH requires two string arguments",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_hasarg(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("HASARG requires one argument", span, env));
+    }
+    let name_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match name_val {
+        Value::String(name) => {
+            let key = name.trim_start_matches('-');
+            let found = env.borrow().parsed_flags.contains_key(key);
+            Ok(Value::Boolean(found))
+        }
+        _ => Err(runtime_err("HASARG requires a string argument", span, env)),
+    }
+}
+
+fn eval_builtin_getarg(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.is_empty() || args.len() > 2 {
+        return Err(runtime_err("GETARG requires 1 or 2 arguments", span, env));
+    }
+    let name_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let key = match &name_val {
+        Value::String(name) => name.trim_start_matches('-').to_string(),
+        _ => {
+            return Err(runtime_err(
+                "GETARG requires a string as the first argument",
+                span,
+                env,
+            ));
+        }
+    };
+    let flags = Rc::clone(&env.borrow().parsed_flags);
+    match flags.get(&key) {
+        Some(val) => Ok(Value::String(val.clone())),
+        None if args.len() == 2 => evaluate_node(&args[1], Rc::clone(env), debug),
+        None => Err(runtime_err(
+            format!("Argument '{}' not found", key),
             span,
             env,
         )),

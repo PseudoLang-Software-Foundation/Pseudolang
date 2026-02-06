@@ -468,6 +468,56 @@ EVAL takes in a string expression, that will return the evaluated response as if
 
 Terminates program execution immediately.
 
+## Command-Line Arguments
+
+PseudoLang programs can access CLI arguments passed after the `.psl` file path:
+
+```
+fpli run program.psl --verbose -n 5 output.txt
+```
+
+Flags placed before the `.psl` file (like `--debug`) are consumed by `fpli` itself. Everything after the file is forwarded to the program.
+
+### Built-in Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `ARGS` | List | All raw arguments as strings |
+| `ARGCOUNT` | Integer | Number of arguments |
+| `POSITIONALS` | List | Non-flag arguments only |
+
+```psl
+DISPLAY(ARGS)           COMMENT returns ["--verbose", "-n", "5", "output.txt"]
+DISPLAY(ARGCOUNT)       COMMENT returns 4
+DISPLAY(POSITIONALS)    COMMENT returns ["output.txt"]
+```
+
+### Built-in Functions
+
+`HASARG(name)` — Returns `TRUE` if a flag exists. Leading dashes in the query are stripped automatically.
+
+```psl
+HASARG("verbose")   COMMENT matches --verbose
+HASARG("--verbose") COMMENT also matches --verbose
+HASARG("n")         COMMENT matches -n
+```
+
+`GETARG(name)` — Returns the value of a flag. Errors if the flag is not found.
+
+`GETARG(name, default)` — Returns the value or the default if the flag is missing.
+
+```psl
+DISPLAY(GETARG("n"))                COMMENT returns "5"
+DISPLAY(GETARG("missing", "N/A"))   COMMENT returns "N/A"
+DISPLAY(GETARG("verbose"))          COMMENT returns "true" (boolean flags)
+```
+
+### Parsing Rules
+
+- `--key value` or `-k value`: next non-flag argument is captured as the value
+- `--flag` or `-f` (followed by another flag or end): treated as a boolean flag with value `"true"`
+- Anything not starting with `-`: added to `POSITIONALS`
+
 ## Limitations
 
 Since a lot of the syntax is text like COMMENT or TRUE, you may not set variables as such, and the interpreter will try to raise an error if it occurs.

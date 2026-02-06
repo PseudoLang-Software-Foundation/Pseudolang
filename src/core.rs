@@ -1,7 +1,12 @@
 use crate::{interpreter, lexer::Lexer, parser};
 use std::fmt::Write;
 
-pub fn execute_code(source_code: &str, debug: bool, return_output: bool) -> Result<String, String> {
+pub fn execute_code(
+    source_code: &str,
+    debug: bool,
+    return_output: bool,
+    args: &[String],
+) -> Result<String, String> {
     let mut lexer = Lexer::new(source_code);
     let tokens = lexer.tokenize();
 
@@ -20,7 +25,7 @@ pub fn execute_code(source_code: &str, debug: bool, return_output: bool) -> Resu
         println!("\n=== Starting Execution ===");
     }
 
-    let output = match interpreter::run_with_source(ast, source_code) {
+    let output = match interpreter::run_with_source(ast, source_code, args) {
         Ok(output) => output,
         Err(e) => return Err(e.format(source_code)),
     };
@@ -51,7 +56,7 @@ pub fn execute_code_with_capture(input: &str, debug: bool) -> Result<String, Str
         writeln!(output, "\n=== Starting Execution ===").unwrap();
     }
 
-    let program_output = match interpreter::run_with_source(ast, input) {
+    let program_output = match interpreter::run_with_source(ast, input, &[]) {
         Ok(output) => output,
         Err(e) => return Err(e.format(input)),
     };

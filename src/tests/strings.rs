@@ -38,7 +38,8 @@ fn test_string_operations() {
             false,
         )
         .expect("Failed to parse");
-        let output = crate::interpreter::run_with_source(ast, input).expect("Interpreter error");
+        let output =
+            crate::interpreter::run_with_source(ast, input, &[]).expect("Interpreter error");
         assert_eq!(output, expected_output, "Test failed for input '{}'", input);
     }
 }

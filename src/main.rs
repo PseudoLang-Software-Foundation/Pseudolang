@@ -16,7 +16,7 @@ const HELP_TEMPLATE: &str = r#"PseudoLang Usage:
     fpli [OPTIONS] COMMAND [ARGS]
 
 COMMANDS:
-    run <input_file.psl>    Execute a PseudoLang program
+    run <input_file.psl> [PROGRAM_ARGS...]    Execute a PseudoLang program
 
 OPTIONS:
     -h, --help       Display this help message
@@ -25,7 +25,9 @@ OPTIONS:
 
 Examples:
     fpli run program.psl
+    fpli --debug run source.psl
     fpli run --debug source.psl
+    fpli run program.psl --verbose -n 5 output.txt
 "#;
 
 #[derive(Parser)]
@@ -59,7 +61,15 @@ enum Commands {
     },
 }
 
-fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
+fn split_args() -> (Vec<String>, Vec<String>) {
+    let all: Vec<String> = std::env::args().collect();
+    match all.iter().position(|a| a.ends_with(".psl")) {
+        Some(pos) => (all[..=pos].to_vec(), all[pos + 1..].to_vec()),
+        None => (all, vec![]),
+    }
+}
+
+fn run_program(input_file: &str, debug: bool, program_args: &[String]) -> Result<(), String> {
     if !input_file.ends_with(".psl") {
         return Err(format!(
             "Input file must have .psl extension, got: {}",
@@ -74,14 +84,15 @@ fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
     file.read_to_string(&mut source_code)
         .map_err(|e| format!("Error reading file {}: {}", input_file, e))?;
 
-    match execute_code(&source_code, debug, false) {
+    match execute_code(&source_code, debug, false, program_args) {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
+    let (clap_args, program_args) = split_args();
+    let cli = Cli::parse_from(clap_args);
 
     if cli.debug {
         println!("\n=== Debug Mode Enabled ===\n");
@@ -89,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Run { ref input_file } => {
-            if let Err(error) = run_program(input_file, cli.debug) {
+            if let Err(error) = run_program(input_file, cli.debug, &program_args) {
                 eprintln!("Error: {}", error);
                 std::process::exit(1);
             }
