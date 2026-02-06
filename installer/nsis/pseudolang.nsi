@@ -1,15 +1,20 @@
 !include "MUI2.nsh"
+!include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 !include "WordFunc.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
 
 !ifndef VERSION
   !define VERSION "0.0.0"
 !endif
 
-RequestExecutionLevel highest
+RequestExecutionLevel user
 
 Var IsAdminInstall
+Var InstModeAllUsers
+Var RadioUser
+Var RadioAdmin
 
 # Branding
 !define MUI_ICON "../../assets/Pseudolang-Logo.ico"
@@ -30,6 +35,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 # Pages
 !insertmacro MUI_PAGE_WELCOME
+Page custom InstModePageCreate InstModePageLeave
 !insertmacro MUI_PAGE_LICENSE "../../LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -42,11 +48,56 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
-    UserInfo::GetAccountType
+    StrCpy $IsAdminInstall 0
+    StrCpy $InstModeAllUsers 0
+    StrCpy $INSTDIR "$LOCALAPPDATA\PseudoLang"
+
+    ${GetParameters} $0
+    ${GetOptions} $0 "/allusers" $1
+    ${IfNot} ${Errors}
+        UserInfo::GetAccountType
+        Pop $0
+        ${If} $0 == "Admin"
+            StrCpy $IsAdminInstall 1
+            StrCpy $InstModeAllUsers 1
+            StrCpy $INSTDIR "$PROGRAMFILES\PseudoLang"
+        ${EndIf}
+    ${EndIf}
+FunctionEnd
+
+Function InstModePageCreate
+    ${If} $IsAdminInstall == 1
+        Abort
+    ${EndIf}
+
+    nsDialogs::Create 1018
     Pop $0
-    ${If} $0 == "Admin"
-        StrCpy $IsAdminInstall 1
-        StrCpy $INSTDIR "$PROGRAMFILES\PseudoLang"
+
+    ${NSD_CreateLabel} 0 0 100% 24u "Choose how to install PseudoLang:"
+    Pop $0
+
+    ${NSD_CreateRadioButton} 12u 30u 100% 12u "Install just for me (recommended)"
+    Pop $RadioUser
+    ${NSD_Check} $RadioUser
+
+    ${NSD_CreateRadioButton} 12u 48u 100% 12u "Install for all users (requires admin)"
+    Pop $RadioAdmin
+
+    nsDialogs::Show
+FunctionEnd
+
+Function InstModePageLeave
+    ${NSD_GetState} $RadioAdmin $0
+    ${If} $0 == ${BST_CHECKED}
+        UserInfo::GetAccountType
+        Pop $0
+        ${If} $0 == "Admin"
+            StrCpy $IsAdminInstall 1
+            StrCpy $INSTDIR "$PROGRAMFILES\PseudoLang"
+        ${Else}
+            ExecShell "runas" "$EXEPATH" "/allusers" SW_SHOWNORMAL
+            Quit
+        ${EndIf}
     ${Else}
         StrCpy $IsAdminInstall 0
         StrCpy $INSTDIR "$LOCALAPPDATA\PseudoLang"
