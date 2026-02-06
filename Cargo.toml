@@ -2,7 +2,7 @@
 
 [package]
 name = "fpli"
-version = "0.9.602"
+version = "0.9.603"
 edition = "2024"
 description = "A Pseudolang interpreter written in Rust"
 repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
