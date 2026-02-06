@@ -869,34 +869,22 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             try_block,
             error_var,
             catch_block,
-        } => {
-            let try_env = Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
-
-            match evaluate_node(try_block, Rc::clone(&try_env), debug) {
-                Ok(result) => {
-                    env.borrow_mut().output.push_str(&try_env.borrow().output);
-                    Ok(result)
+        } => match evaluate_node(try_block, Rc::clone(&env), debug) {
+            Ok(result) => Ok(result),
+            Err(Interruption::Return(val)) => Err(Interruption::Return(val)),
+            Err(Interruption::Error(error)) => {
+                let catch_env =
+                    Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
+                if let Some(var_name) = error_var {
+                    catch_env
+                        .borrow_mut()
+                        .set(var_name.clone(), Value::String(error.message));
                 }
-                Err(Interruption::Return(val)) => {
-                    env.borrow_mut().output.push_str(&try_env.borrow().output);
-                    Err(Interruption::Return(val))
-                }
-                Err(Interruption::Error(error)) => {
-                    env.borrow_mut().output.push_str(&try_env.borrow().output);
-
-                    let catch_env =
-                        Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
-                    if let Some(var_name) = error_var {
-                        catch_env
-                            .borrow_mut()
-                            .set(var_name.clone(), Value::String(error.message));
-                    }
-                    let result = evaluate_node(catch_block, Rc::clone(&catch_env), debug)?;
-                    env.borrow_mut().output.push_str(&catch_env.borrow().output);
-                    Ok(result)
-                }
+                let result = evaluate_node(catch_block, Rc::clone(&catch_env), debug)?;
+                env.borrow_mut().output.push_str(&catch_env.borrow().output);
+                Ok(result)
             }
-        }
+        },
 
         AstNode::Eval(expr) => {
             let expr_val = evaluate_node(expr, Rc::clone(&env), debug)?;

@@ -510,70 +510,7 @@ impl Parser {
             }
             Ok(self.spanned_from(AstNode::Sort(Box::new(list_expr)), start))
         } else {
-            match self.peek() {
-                Some(Token::Concat) | Some(Token::Substring) => self.parse_builtin_function(debug),
-                _ => self.parse_logical_or(debug),
-            }
-        }
-    }
-
-    fn parse_builtin_function(&mut self, debug: bool) -> Result<Spanned, PSLError> {
-        let start = self.peek_span().start;
-        let function_token = self.peek().cloned();
-        match function_token {
-            Some(Token::Concat) => {
-                self.advance();
-                if !self.match_token(&Token::OpenParen) {
-                    return Err(self.create_error("Expected '(' after CONCAT"));
-                }
-                let arg1 = self.parse_expression(debug)?;
-                if !self.match_token(&Token::Comma) {
-                    return Err(self.create_error("Expected comma after first argument"));
-                }
-                let arg2 = self.parse_expression(debug)?;
-                if !self.match_token(&Token::CloseParen) {
-                    return Err(self.create_error("Expected ')' after second argument"));
-                }
-                Ok(self.spanned_from(AstNode::Concat(Box::new(arg1), Box::new(arg2)), start))
-            }
-            Some(Token::Substring) => {
-                self.advance();
-                if !self.match_token(&Token::OpenParen) {
-                    return Err(self.create_error("Expected '(' after SUBSTRING"));
-                }
-                let string_expr = self.parse_expression(debug)?;
-                if !self.match_token(&Token::Comma) {
-                    return Err(self.create_error("Expected comma after string expression"));
-                }
-                let start_expr = self.parse_expression(debug)?;
-                if !self.match_token(&Token::Comma) {
-                    return Err(self.create_error("Expected comma after start expression"));
-                }
-                let end_expr = self.parse_expression(debug)?;
-                if !self.match_token(&Token::CloseParen) {
-                    return Err(self.create_error("Expected ')' after end expression"));
-                }
-                Ok(self.spanned_from(
-                    AstNode::Substring(
-                        Box::new(string_expr),
-                        Box::new(start_expr),
-                        Box::new(end_expr),
-                    ),
-                    start,
-                ))
-            }
-            Some(Token::ListLength) => {
-                self.advance();
-                if !self.match_token(&Token::OpenParen) {
-                    return Err(self.create_error("Expected '(' after LENGTH"));
-                }
-                let arg = self.parse_expression(debug)?;
-                if !self.match_token(&Token::CloseParen) {
-                    return Err(self.create_error("Expected ')' after argument"));
-                }
-                Ok(self.spanned_from(AstNode::Length(Box::new(arg)), start))
-            }
-            _ => Err(self.create_error("Unknown built-in function")),
+            self.parse_logical_or(debug)
         }
     }
 
