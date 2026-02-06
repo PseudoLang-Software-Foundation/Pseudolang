@@ -1,7 +1,7 @@
 use crate::error::{PSLError, Span, StackFrame};
 use crate::parser::{AstNode, BinaryOperator, Spanned, UnaryOperator};
 use num_bigint::BigInt;
-use num_traits::{One, Signed, ToPrimitive, Zero};
+use num_traits::{FromPrimitive, One, Signed, ToPrimitive, Zero};
 use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -364,6 +364,9 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
 
             #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
             {
+                if let Some(prompt_expr) = prompt {
+                    evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
+                }
                 Err(runtime_err(
                     "INPUT is not supported in this environment",
                     span,
@@ -1051,6 +1054,7 @@ fn eval_builtin_sleep(
     }
     #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
     {
+        evaluate_node(&args[0], Rc::clone(env), debug)?;
         Err(runtime_err(
             "SLEEP is not supported in this environment",
             span,
@@ -1207,7 +1211,9 @@ fn eval_builtin_ceil(
     }
     let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
     match x {
-        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.ceil() as i64))),
+        Value::Float(f) => BigInt::from_f64(f.ceil())
+            .map(Value::Integer)
+            .ok_or_else(|| runtime_err("CEIL: result is not a finite number", span, env)),
         Value::Integer(n) => Ok(Value::Integer(n)),
         _ => Err(runtime_err("CEIL requires a numeric argument", span, env)),
     }
@@ -1224,7 +1230,9 @@ fn eval_builtin_floor(
     }
     let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
     match x {
-        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.floor() as i64))),
+        Value::Float(f) => BigInt::from_f64(f.floor())
+            .map(Value::Integer)
+            .ok_or_else(|| runtime_err("FLOOR: result is not a finite number", span, env)),
         Value::Integer(n) => Ok(Value::Integer(n)),
         _ => Err(runtime_err("FLOOR requires a numeric argument", span, env)),
     }
@@ -1383,7 +1391,9 @@ fn eval_builtin_round(
     }
     let x = evaluate_node(&args[0], Rc::clone(env), debug)?;
     match x {
-        Value::Float(f) => Ok(Value::Integer(BigInt::from(f.round() as i64))),
+        Value::Float(f) => BigInt::from_f64(f.round())
+            .map(Value::Integer)
+            .ok_or_else(|| runtime_err("ROUND: result is not a finite number", span, env)),
         Value::Integer(n) => Ok(Value::Integer(n)),
         _ => Err(runtime_err("ROUND requires a numeric argument", span, env)),
     }
@@ -1526,11 +1536,13 @@ fn eval_builtin_timestamp(
                 return Ok(Value::Float(timestamp));
             }
             #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-            Err(runtime_err(
-                "TIMESTAMP is not supported in this environment",
-                span,
-                env,
-            ))
+            {
+                Err(runtime_err(
+                    "TIMESTAMP is not supported in this environment",
+                    span,
+                    env,
+                ))
+            }
         }
         1 => {
             #[cfg(not(target_arch = "wasm32"))]
@@ -1593,11 +1605,14 @@ fn eval_builtin_timestamp(
                 };
             }
             #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-            Err(runtime_err(
-                "TIMESTAMP is not supported in this environment",
-                span,
-                env,
-            ))
+            {
+                evaluate_node(&args[0], Rc::clone(env), debug)?;
+                Err(runtime_err(
+                    "TIMESTAMP is not supported in this environment",
+                    span,
+                    env,
+                ))
+            }
         }
         _ => Err(runtime_err(
             "TIMESTAMP requires 0 or 1 arguments",
@@ -1678,11 +1693,14 @@ fn eval_builtin_time(
         };
     }
     #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-    Err(runtime_err(
-        "TIME is not supported in this environment",
-        span,
-        env,
-    ))
+    {
+        evaluate_node(&args[0], Rc::clone(env), debug)?;
+        Err(runtime_err(
+            "TIME is not supported in this environment",
+            span,
+            env,
+        ))
+    }
 }
 
 fn eval_builtin_timezone(

@@ -439,3 +439,77 @@ fn test_bigint_mixed_with_float() {
         "100000000000000000000",
     );
 }
+
+#[test]
+fn test_negative_modulo() {
+    assert_output("DISPLAY(-10 MOD 3)", "-1");
+    assert_output("DISPLAY(10 MOD -3)", "1");
+    assert_output("DISPLAY(-10 MOD -3)", "-1");
+    assert_output("DISPLAY(-7 MOD 2)", "-1");
+    assert_output("DISPLAY(7 MOD -2)", "1");
+    assert_output("DISPLAY(-1 MOD 5)", "-1");
+}
+
+#[test]
+fn test_bigint_modulo() {
+    assert_output("DISPLAY(100000000000000000000 MOD 7)", "2");
+    assert_output(
+        "DISPLAY(999999999999999999999 MOD 1000000000000000000000)",
+        "999999999999999999999",
+    );
+    assert_output("DISPLAY(-100000000000000000000 MOD 3)", "-1");
+}
+
+#[test]
+fn test_ceil_floor_large_float() {
+    assert_output(
+        "DISPLAY(CEIL(1000000000000000000.0))",
+        "1000000000000000000",
+    );
+    assert_output(
+        "DISPLAY(FLOOR(1000000000000000000.0))",
+        "1000000000000000000",
+    );
+    assert_output(
+        "DISPLAY(CEIL(-1000000000000000000.0))",
+        "-1000000000000000000",
+    );
+    assert_output(
+        "DISPLAY(FLOOR(-1000000000000000000.0))",
+        "-1000000000000000000",
+    );
+    assert_output(
+        "DISPLAY(ROUND(1000000000000000000.0))",
+        "1000000000000000000",
+    );
+    assert_output(
+        "DISPLAY(ROUND(-1000000000000000000.0))",
+        "-1000000000000000000",
+    );
+    assert_output("DISPLAY(CEIL(999999999999.5))", "1000000000000");
+    assert_output("DISPLAY(FLOOR(999999999999.5))", "999999999999");
+}
+
+#[test]
+fn test_ceil_floor_on_integers() {
+    assert_output(
+        "DISPLAY(CEIL(99999999999999999999))",
+        "99999999999999999999",
+    );
+    assert_output(
+        "DISPLAY(FLOOR(99999999999999999999))",
+        "99999999999999999999",
+    );
+    assert_output(
+        "DISPLAY(ROUND(99999999999999999999))",
+        "99999999999999999999",
+    );
+}
+
+#[test]
+fn test_negative_ceil_floor() {
+    assert_output("DISPLAY(CEIL(-3.1))", "-3");
+    assert_output("DISPLAY(FLOOR(-3.9))", "-4");
+    assert_output("DISPLAY(ROUND(-3.5))", "-4");
+    assert_output("DISPLAY(ROUND(-3.4))", "-3");
+}

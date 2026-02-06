@@ -117,7 +117,7 @@ jobs:
         run: |
           cargo build --release --target wasm32-wasip1 --features wasi
           mkdir -p release
-          cp target/wasm32-wasip1/release/fplc.wasm release/fplc-wasi.wasm
+          cp target/wasm32-wasip1/release/fplc.wasm release/fplc.wasm
 
       # --- Upload artifacts ---
 
@@ -150,7 +150,7 @@ jobs:
           cp artifacts/pseudolang-x86_64-pc-windows-gnu/fplc-x64.exe release/
           cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe release/ || true
           cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fplc-linux-x64 release/
-          cp artifacts/pseudolang-wasm32-wasip1/fplc-wasi.wasm release/ || true
+          cp artifacts/pseudolang-wasm32-wasip1/fplc.wasm release/ || true
           cp artifacts/pseudolang-wasm32-unknown-unknown/wasm-bindgen.zip release/ || true
           chmod +x release/fplc-linux-x64
 
@@ -164,5 +164,5 @@ jobs:
             release/fplc-x64.exe
             release/fplc-linux-x64
             release/pseudolang-setup-x64.exe
-            release/fplc-wasi.wasm
+            release/fplc.wasm
             release/wasm-bindgen.zip

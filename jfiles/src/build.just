@@ -6,15 +6,15 @@ import "../common.just"
 build:
   cd {{ROOT}} && cargo build --features native
 
-# Build release (native)
+# Build release (native, for current platform)
 release:
   cd {{ROOT}} && cargo build --release --features native
 
-# Cross-compile Windows release
+# Cross-compile Windows release (Linux only, requires cross)
 build-windows:
   cd {{ROOT}} && cross build --release --target x86_64-pc-windows-gnu --features native
 
-# Cross-compile Linux release
+# Cross-compile Linux release (Windows only, requires cross)
 build-linux:
   cd {{ROOT}} && cross build --release --target x86_64-unknown-linux-gnu --features native
 
@@ -30,24 +30,44 @@ build-wasi:
 build-installer:
   cd {{ROOT}} && makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
 
-# Full release: all targets + installer + copy artifacts
-build-all: build-windows build-linux build-wasm build-wasi
+# Build all targets (native release + cross + wasm + wasi)
+build-all: release build-wasm build-wasi
   #!/usr/bin/env bash
   set -euo pipefail
   cd "{{ROOT}}"
-  mkdir -p release/installer release/wasi release/wasm
-  cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe || true
-  cp release/fplc-x64.exe installer/fplc.exe || true
-  cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 || true
-  chmod +x release/fplc-linux-x64 || true
+  mkdir -p release/wasi release/wasm
   cp pkg/* release/wasm/ || true
   cp target/wasm32-wasip1/release/fplc.wasm release/wasi/ || true
-  if command -v makensis >/dev/null 2>&1; then
-    makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
-    echo "Installer built at release/installer/pseudolang-setup-x64.exe"
-  else
-    echo "makensis not found, skipping installer"
-  fi
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+      cp target/release/fplc.exe release/fplc-x64.exe || true
+      cp release/fplc-x64.exe installer/fplc.exe || true
+      if command -v makensis >/dev/null 2>&1; then
+        makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
+        echo "Installer built at release/installer/pseudolang-setup-x64.exe"
+      else
+        echo "makensis not found, skipping installer"
+      fi
+      if command -v cross >/dev/null 2>&1; then
+        echo "Cross-compiling Linux target..."
+        cross build --release --target x86_64-unknown-linux-gnu --features native
+        cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 || true
+      else
+        echo "cross not found, skipping Linux cross-compilation"
+      fi
+      ;;
+    *)
+      cp target/release/fplc release/fplc-linux-x64 || true
+      chmod +x release/fplc-linux-x64 || true
+      if command -v cross >/dev/null 2>&1; then
+        echo "Cross-compiling Windows target..."
+        cross build --release --target x86_64-pc-windows-gnu --features native
+        cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe || true
+      else
+        echo "cross not found, skipping Windows cross-compilation"
+      fi
+      ;;
+  esac
   echo ""
   echo "Release {{VERSION}} built. Artifacts in release/"
 
