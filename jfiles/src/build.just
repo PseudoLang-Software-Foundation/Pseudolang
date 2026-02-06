@@ -50,8 +50,9 @@ build-all: release build-wasm build-wasi
       fi
       if command -v cross >/dev/null 2>&1; then
         echo "Cross-compiling Linux target..."
-        cross build --release --target x86_64-unknown-linux-gnu --features native
-        cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 || true
+        cross build --release --target x86_64-unknown-linux-gnu --features native \
+          && cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 \
+          || echo "Cross-compilation failed, skipping Linux target"
       else
         echo "cross not found, skipping Linux cross-compilation"
       fi
@@ -61,8 +62,9 @@ build-all: release build-wasm build-wasi
       chmod +x release/fplc-linux-x64 || true
       if command -v cross >/dev/null 2>&1; then
         echo "Cross-compiling Windows target..."
-        cross build --release --target x86_64-pc-windows-gnu --features native
-        cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe || true
+        cross build --release --target x86_64-pc-windows-gnu --features native \
+          && cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe \
+          || echo "Cross-compilation failed, skipping Windows target"
       else
         echo "cross not found, skipping Windows cross-compilation"
       fi
