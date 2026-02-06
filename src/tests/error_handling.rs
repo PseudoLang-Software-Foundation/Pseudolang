@@ -1,7 +1,7 @@
 use super::{assert_output, get_error, run_test};
 
 // ---------------------------------------------------------------------------
-// Basic error detection (existing tests, preserved)
+// Basic error detection
 // ---------------------------------------------------------------------------
 
 #[test]

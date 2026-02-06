@@ -9,99 +9,64 @@ mod parser;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+use clap::{Parser, Subcommand};
 use core::*;
 
-include!(concat!(env!("OUT_DIR"), "/version.rs"));
+const HELP_TEMPLATE: &str = r#"PseudoLang Usage:
+    fplc [OPTIONS] COMMAND [ARGS]
 
-#[derive(Debug)]
-struct Config {
-    command: Command,
-    input_file: String,
+COMMANDS:
+    run <input_file.psl>    Execute a PseudoLang program
+
+OPTIONS:
+    -h, --help       Display this help message
+    -V, --version    Display version information
+    -d, --debug      Enable debug output during execution
+
+Examples:
+    fplc run program.psl
+    fplc run --debug source.psl
+"#;
+
+#[derive(Parser)]
+#[command(
+    name = "PseudoLang",
+    version = concat!("version ", env!("CARGO_PKG_VERSION")),
+    help_template = HELP_TEMPLATE,
+    disable_help_subcommand = true,
+    subcommand_required = true,
+    arg_required_else_help = true
+)]
+struct Cli {
+    #[arg(
+        short = 'd',
+        long,
+        global = true,
+        help = "Enable debug output during execution"
+    )]
     debug: bool,
-    show_version: bool,
-    show_help: bool,
+
+    #[command(subcommand)]
+    command: Commands,
 }
 
-#[derive(Debug)]
-enum Command {
-    Run,
-    None,
-}
-
-fn parse_args() -> Result<Config, String> {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-
-    if args.is_empty() {
-        return Err(format!("{}\n{}", HELP_MESSAGE, USAGE_TIP));
-    }
-
-    let mut debug = false;
-    let mut show_help = false;
-    let mut show_version = false;
-
-    let mut indices_to_remove = Vec::new();
-
-    for (index, arg) in args.iter().enumerate() {
-        if arg.starts_with("--") {
-            match arg.as_str() {
-                "--debug" => debug = true,
-                "--help" => show_help = true,
-                "--version" => show_version = true,
-                _ => return Err(format_unknown_option_error(arg)),
-            }
-            indices_to_remove.push(index);
-        } else if arg.starts_with('-') && arg.len() > 1 {
-            let chars = arg[1..].chars();
-            for c in chars {
-                match c {
-                    'd' => debug = true,
-                    'h' => show_help = true,
-                    'v' => show_version = true,
-                    _ => return Err(format_unknown_option_error(&format!("-{}", c))),
-                }
-            }
-            indices_to_remove.push(index);
-        }
-    }
-
-    for &index in indices_to_remove.iter().rev() {
-        args.remove(index);
-    }
-
-    if show_help || show_version {
-        return Ok(Config {
-            command: Command::None,
-            input_file: String::new(),
-            debug,
-            show_version,
-            show_help,
-        });
-    }
-
-    match args.first().map(String::as_str) {
-        Some("run") => {
-            if args.len() < 2 {
-                return Err(format_missing_input_error());
-            }
-            let input_file = args[1].clone();
-            if !input_file.ends_with(".psl") {
-                return Err(format_invalid_extension_error(&input_file));
-            }
-
-            Ok(Config {
-                command: Command::Run,
-                input_file,
-                debug,
-                show_version,
-                show_help,
-            })
-        }
-        Some(cmd) => Err(format_unknown_command_error(cmd)),
-        None => Err(format_no_command_error()),
-    }
+#[derive(Subcommand)]
+enum Commands {
+    #[command(about = "Execute a PseudoLang program")]
+    Run {
+        #[arg(help = "Path to a .psl file")]
+        input_file: String,
+    },
 }
 
 fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
+    if !input_file.ends_with(".psl") {
+        return Err(format!(
+            "Input file must have .psl extension, got: {}",
+            input_file
+        ));
+    }
+
     let mut file = fs::File::open(input_file)
         .map_err(|e| format!("Error opening file {}: {}", input_file, e))?;
 
@@ -116,33 +81,19 @@ fn run_program(input_file: &str, debug: bool) -> Result<(), String> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = match parse_args() {
-        Ok(config) => config,
-        Err(error) => {
-            eprintln!("Error: {}", error);
-            std::process::exit(1);
-        }
-    };
+    let cli = Cli::parse();
 
-    if config.show_help {
-        println!("{}", HELP_MESSAGE);
-        return Ok(());
-    }
-
-    if config.show_version {
-        println!("PseudoLang version {}", get_version());
-        return Ok(());
-    }
-
-    if config.debug {
+    if cli.debug {
         println!("\n=== Debug Mode Enabled ===\n");
     }
 
-    if let Command::Run = config.command
-        && let Err(error) = run_program(&config.input_file, config.debug)
-    {
-        eprintln!("Error: {}", error);
-        std::process::exit(1);
+    match cli.command {
+        Commands::Run { ref input_file } => {
+            if let Err(error) = run_program(input_file, cli.debug) {
+                eprintln!("Error: {}", error);
+                std::process::exit(1);
+            }
+        }
     }
 
     Ok(())

@@ -9,6 +9,7 @@ repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
 license = "MIT"
 
 [lib]
+name = "fplc_lib"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
@@ -29,6 +30,7 @@ panic = "abort"
 strip = true
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"

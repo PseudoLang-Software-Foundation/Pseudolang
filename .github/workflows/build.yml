@@ -104,10 +104,10 @@ jobs:
         run: |
           wasm-pack build --target web --release -- --features wasm
           mkdir -p release/wasm-bindgen
-          cp pkg/fplc_bg.wasm release/wasm-bindgen/
-          cp pkg/fplc.js release/wasm-bindgen/
-          cp pkg/fplc.d.ts release/wasm-bindgen/
-          cp pkg/fplc_bg.wasm.d.ts release/wasm-bindgen/
+          cp pkg/fplc_lib_bg.wasm release/wasm-bindgen/
+          cp pkg/fplc_lib.js release/wasm-bindgen/
+          cp pkg/fplc_lib.d.ts release/wasm-bindgen/
+          cp pkg/fplc_lib_bg.wasm.d.ts release/wasm-bindgen/
           cd release && zip -r wasm-bindgen.zip wasm-bindgen/
 
       # --- WASI build ---
