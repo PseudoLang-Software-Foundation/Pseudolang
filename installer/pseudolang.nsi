@@ -29,13 +29,13 @@ BrandingText "(c) 2026 PseudoLang Software Foundation"
 Section ""
     SetOutPath $INSTDIR
 
-    File /oname=fplc.exe "fplc.exe"
-    
+    File /oname=fpli.exe "fpli.exe"
+
     System::Call 'Kernel32::SetEnvironmentVariableA(t "PATH", t "$INSTDIR;$%PATH%")'
 
     ReadRegStr $R0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
     WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$INSTDIR;$R0"
-    
+
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayName" "Pseudolang"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "DisplayVersion" "${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang" "Publisher" "Pseudolang Software Foundation"
@@ -47,7 +47,7 @@ Section ""
 
     File "../LICENSE"
     File "../assets/Pseudolang-Logo.ico"
-    
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd
 
@@ -56,13 +56,13 @@ Section "Uninstall"
     ${WordReplace} "$R0" "$INSTDIR;" "" "+" $R1
     WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$R1"
 
-    Delete "$INSTDIR\fplc.exe"
+    Delete "$INSTDIR\fpli.exe"
     Delete "$INSTDIR\LICENSE"
     Delete "$INSTDIR\Pseudolang-Logo.ico"
     Delete "$INSTDIR\uninstall.exe"
     RMDir "$INSTDIR"
 
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Pseudolang"
-    
+
     SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 SectionEnd

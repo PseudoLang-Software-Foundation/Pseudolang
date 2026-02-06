@@ -13,7 +13,7 @@ A clear and concise description of what the bug is.
 **To Reproduce**
 Steps to reproduce the behavior:
 1. Provide minimal code that reproduces the issue
-2. Provide debug output (fplc run -d file.psl)
+2. Provide debug output (fpli run -d file.psl)
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.

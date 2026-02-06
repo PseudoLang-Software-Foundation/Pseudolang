@@ -26,7 +26,7 @@ build-wasm:
 build-wasi:
   cd {{ROOT}} && cargo build --release --target wasm32-wasip1 --features wasi
 
-# Build NSIS Windows installer (requires makensis and fplc.exe in installer/)
+# Build NSIS Windows installer (requires makensis and fpli.exe in installer/)
 build-installer:
   cd {{ROOT}} && makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
 
@@ -37,11 +37,11 @@ build-all: release build-wasm build-wasi
   cd "{{ROOT}}"
   mkdir -p release/wasi release/wasm
   cp pkg/* release/wasm/ || true
-  cp target/wasm32-wasip1/release/fplc.wasm release/wasi/ || true
+  cp target/wasm32-wasip1/release/fpli.wasm release/wasi/ || true
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*|Windows_NT)
-      cp target/release/fplc.exe release/fplc-x64.exe || true
-      cp release/fplc-x64.exe installer/fplc.exe || true
+      cp target/release/fpli.exe release/fpli-x64.exe || true
+      cp release/fpli-x64.exe installer/fpli.exe || true
       if command -v makensis >/dev/null 2>&1; then
         makensis -DVERSION={{VERSION}} installer/pseudolang.nsi
         echo "Installer built at release/installer/pseudolang-setup-x64.exe"
@@ -51,19 +51,19 @@ build-all: release build-wasm build-wasi
       if command -v cross >/dev/null 2>&1; then
         echo "Cross-compiling Linux target..."
         cross build --release --target x86_64-unknown-linux-gnu --features native \
-          && cp target/x86_64-unknown-linux-gnu/release/fplc release/fplc-linux-x64 \
+          && cp target/x86_64-unknown-linux-gnu/release/fpli release/fpli-linux-x64 \
           || echo "Cross-compilation failed, skipping Linux target"
       else
         echo "cross not found, skipping Linux cross-compilation"
       fi
       ;;
     *)
-      cp target/release/fplc release/fplc-linux-x64 || true
-      chmod +x release/fplc-linux-x64 || true
+      cp target/release/fpli release/fpli-linux-x64 || true
+      chmod +x release/fpli-linux-x64 || true
       if command -v cross >/dev/null 2>&1; then
         echo "Cross-compiling Windows target..."
         cross build --release --target x86_64-pc-windows-gnu --features native \
-          && cp target/x86_64-pc-windows-gnu/release/fplc.exe release/fplc-x64.exe \
+          && cp target/x86_64-pc-windows-gnu/release/fpli.exe release/fpli-x64.exe \
           || echo "Cross-compilation failed, skipping Windows target"
       else
         echo "cross not found, skipping Windows cross-compilation"

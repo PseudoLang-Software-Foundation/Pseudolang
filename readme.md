@@ -36,24 +36,32 @@ There is also an **installer** for Windows, that you can download in [GitHub rel
 
 ## Use
 
-To use the compiled versions, run the executable and pass two parameters as the input and output file (pseudolang programs end with `.psl`). Ex: `fplc run main.psl`
+Pseudolang programs use the `.psl` extension. Run them with the `fpli` CLI:
 
-If `fplc` is not added to path or environment variables, make sure to execute the binary specifically.
+```
+fpli run program.psl
+fpli run --debug program.psl
+```
 
-Free Pseudolang Compiler = fplc (like gcc, despite it being interpreted :)
+If `fpli` is not in your PATH, run the binary directly (e.g. `./fpli run program.psl`).
 
-## Compiling
+Free Pseudolang Interpreter = fpli
 
-In order to compile the project yourself, you will need to have rust installed.
+## Building
 
-- Install [**rust**](https://www.rust-lang.org/tools/install), and make sure you have it added to PATH.
-- Clone the repository `git clone https://github.com/Pseudolang-Software-Foundation/PseudoLang.git`
+You will need [Rust](https://www.rust-lang.org/tools/install) installed and added to PATH.
 
-  - To build **release**, you will need bash, cross (`cargo install cross`), wasm-pack, and docker. Then run `just build-all` from `jfiles/src/`. The binaries for each target will be in the `release` folder.
-  - To build **debug**, simply run `cargo build`. The binary will be in the `target/debug` folder.
+```bash
+git clone https://github.com/PseudoLang-Software-Foundation/Pseudolang.git
+cd Pseudolang
+```
 
-- In order to run the unit tests, simply run `cargo test`.
-- For the NSIS installer, just compile `./installer/pseudolang.nsi`
+- **Debug build**: `cargo build --features native`
+- **Release build**: `cargo build --release --features native`
+- **Full release** (native + WASM + WASI, with optional cross-compilation): `just build-all` from `jfiles/src/`
+- **Run tests**: `cargo test`
+
+Cross-compilation for other platforms requires [`cross`](https://github.com/cross-rs/cross) and Docker.
 
 ## Just Commands
 
@@ -66,11 +74,11 @@ All recipes live in `jfiles/src/` and are run with [`just`](https://github.com/c
 | `just release`            | Release build (native)                                         |
 | `just build-wasm`         | Browser WASM via wasm-pack/wasm-bindgen                        |
 | `just build-wasi`         | WASI CLI binary (`wasm32-wasip1`)                              |
-| `just build-all`          | Full release: Windows, Linux, WASM, WASI + installer           |
+| `just build-all`          | Native release + WASM + WASI + optional cross-compilation      |
 | `just test`               | Run all tests                                                  |
 | `just test-verbose`       | Run tests with stdout                                          |
-| `just run <ARGS>`         | Run fplc in debug mode                                         |
-| `just run-release <ARGS>` | Run fplc in release mode                                       |
+| `just run <ARGS>`         | Run fpli in debug mode                                         |
+| `just run-release <ARGS>` | Run fpli in release mode                                       |
 | `just fmt`                | Clippy fix + rustfmt + taplo fmt                               |
 | `just fmt-check`          | Lint/format check (no changes)                                 |
 | `just check`              | `cargo check`                                                  |
@@ -103,7 +111,6 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 <summary>Functionality</summary>
 
 - [ ] Dictionaries
-- [ ] Make sure error handling columns work
 - [ ] Networking
 - [ ] File IO
 - [ ] System integration (terminal commands, process management, environment variables)
@@ -132,4 +139,4 @@ We welcome contributions! If there are any bugs, or particularly pointing out li
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE file](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

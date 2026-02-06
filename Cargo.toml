@@ -1,7 +1,7 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package]
-name = "fplc"
+name = "fpli"
 version = "0.9.600"
 edition = "2024"
 description = "A Pseudolang interpreter written in Rust"
@@ -9,11 +9,11 @@ repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
 license = "MIT"
 
 [lib]
-name = "fplc_lib"
+name = "fpli_lib"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "fplc"
+name = "fpli"
 path = "src/main.rs"
 
 [package.metadata.wasm-pack]

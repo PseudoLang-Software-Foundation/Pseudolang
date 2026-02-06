@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 use core::*;
 
 const HELP_TEMPLATE: &str = r#"PseudoLang Usage:
-    fplc [OPTIONS] COMMAND [ARGS]
+    fpli [OPTIONS] COMMAND [ARGS]
 
 COMMANDS:
     run <input_file.psl>    Execute a PseudoLang program
@@ -24,8 +24,8 @@ OPTIONS:
     -d, --debug      Enable debug output during execution
 
 Examples:
-    fplc run program.psl
-    fplc run --debug source.psl
+    fpli run program.psl
+    fpli run --debug source.psl
 "#;
 
 #[derive(Parser)]
