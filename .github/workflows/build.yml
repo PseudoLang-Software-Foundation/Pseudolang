@@ -75,13 +75,22 @@ jobs:
       - name: Prepare Native Artifacts
         if: matrix.kind == 'native'
         run: |
-          mkdir -p release
+          mkdir -p dist/release
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
-            cp target/${{ matrix.target }}/release/fpli.exe release/fpli-x64.exe
+            cp target/${{ matrix.target }}/release/fpli.exe dist/release/fpli-x64.exe
           elif [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
-            cp target/${{ matrix.target }}/release/fpli release/fpli-linux-x64
-            chmod +x release/fpli-linux-x64
+            cp target/${{ matrix.target }}/release/fpli dist/release/fpli-linux-x64
+            chmod +x dist/release/fpli-linux-x64
           fi
+
+      # --- Debian package ---
+
+      - name: Build Debian Package
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          cargo install cargo-deb
+          cargo deb --no-build --target x86_64-unknown-linux-gnu
+          cp target/x86_64-unknown-linux-gnu/debian/*.deb dist/release/
 
       # --- Windows installer ---
 
@@ -92,23 +101,22 @@ jobs:
       - name: Build Windows Installer
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: |
-          mkdir -p release/installer installer
-          cp release/fpli-x64.exe installer/fpli.exe
-          makensis -DVERSION=${{ env.VERSION }} installer/pseudolang.nsi
-          cp release/installer/pseudolang-setup-x64.exe release/
+          mkdir -p dist/release
+          cp dist/release/fpli-x64.exe installer/nsis/fpli.exe
+          makensis -DVERSION=${{ env.VERSION }} installer/nsis/pseudolang.nsi
 
       # --- WASM build ---
 
       - name: Build WASM
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
-          wasm-pack build --target web --release -- --features wasm
-          mkdir -p release/wasm-bindgen
-          cp pkg/fpli_lib_bg.wasm release/wasm-bindgen/
-          cp pkg/fpli_lib.js release/wasm-bindgen/
-          cp pkg/fpli_lib.d.ts release/wasm-bindgen/
-          cp pkg/fpli_lib_bg.wasm.d.ts release/wasm-bindgen/
-          cd release && zip -r wasm-bindgen.zip wasm-bindgen/
+          wasm-pack build --out-dir dist/.tmp --target web --release -- --features wasm
+          mkdir -p dist/release/wasm-bindgen
+          cp dist/.tmp/fpli_lib_bg.wasm dist/release/wasm-bindgen/
+          cp dist/.tmp/fpli_lib.js dist/release/wasm-bindgen/
+          cp dist/.tmp/fpli_lib.d.ts dist/release/wasm-bindgen/
+          cp dist/.tmp/fpli_lib_bg.wasm.d.ts dist/release/wasm-bindgen/
+          cd dist/release && zip -r wasm-bindgen.zip wasm-bindgen/
 
       # --- WASI build ---
 
@@ -116,8 +124,8 @@ jobs:
         if: matrix.kind == 'wasi'
         run: |
           cargo build --release --target wasm32-wasip1 --features wasi
-          mkdir -p release
-          cp target/wasm32-wasip1/release/fpli.wasm release/fpli.wasm
+          mkdir -p dist/release
+          cp target/wasm32-wasip1/release/fpli.wasm dist/release/fpli.wasm
 
       # --- Upload artifacts ---
 
@@ -125,7 +133,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pseudolang-${{ matrix.target }}
-          path: release/*
+          path: dist/release/*
           retention-days: 7
           if-no-files-found: error
 
@@ -146,13 +154,14 @@ jobs:
 
       - name: Prepare Release Files
         run: |
-          mkdir -p release
-          cp artifacts/pseudolang-x86_64-pc-windows-gnu/fpli-x64.exe release/
-          cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe release/ || true
-          cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fpli-linux-x64 release/
-          cp artifacts/pseudolang-wasm32-wasip1/fpli.wasm release/ || true
-          cp artifacts/pseudolang-wasm32-unknown-unknown/wasm-bindgen.zip release/ || true
-          chmod +x release/fpli-linux-x64
+          mkdir -p dist/release
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/fpli-x64.exe dist/release/
+          cp artifacts/pseudolang-x86_64-pc-windows-gnu/pseudolang-setup-x64.exe dist/release/ || true
+          cp artifacts/pseudolang-x86_64-unknown-linux-gnu/fpli-linux-x64 dist/release/
+          cp artifacts/pseudolang-x86_64-unknown-linux-gnu/pseudolang_*.deb dist/release/ || true
+          cp artifacts/pseudolang-wasm32-wasip1/fpli.wasm dist/release/ || true
+          cp artifacts/pseudolang-wasm32-unknown-unknown/wasm-bindgen.zip dist/release/ || true
+          chmod +x dist/release/fpli-linux-x64
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -161,8 +170,9 @@ jobs:
           name: Pseudolang ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            release/fpli-x64.exe
-            release/fpli-linux-x64
-            release/pseudolang-setup-x64.exe
-            release/fpli.wasm
-            release/wasm-bindgen.zip
+            dist/release/fpli-x64.exe
+            dist/release/fpli-linux-x64
+            dist/release/pseudolang-setup-x64.exe
+            dist/release/fpli.wasm
+            dist/release/wasm-bindgen.zip
+            dist/release/pseudolang_*.deb

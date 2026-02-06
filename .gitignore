@@ -3,9 +3,8 @@
 **/*.rs.bk
 
 # Build artifacts
-/release/
-/pkg/
-installer/fpli.exe
+/dist/
+installer/nsis/fpli.exe
 
 # IDE
 .vscode/
