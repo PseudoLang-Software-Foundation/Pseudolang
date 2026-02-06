@@ -16,7 +16,7 @@ Var IsAdminInstall
 !define MUI_UNICON "../../assets/Pseudolang-Logo.ico"
 
 Name "PseudoLang v${VERSION}"
-OutFile "../../dist/release/pseudolang-setup-x64.exe"
+OutFile "../../dist/release/pseudolang-setup-amd64.exe"
 BrandingText "(c) 2026 PseudoLang Software Foundation"
 
 # EXE version metadata
@@ -56,7 +56,7 @@ FunctionEnd
 Section "Install"
     SetOutPath $INSTDIR
 
-    File /oname=fpli.exe "fpli.exe"
+    File /oname=fpli.exe "../../dist/release/fpli-amd64.exe"
     File "../../LICENSE"
     File "../../assets/Pseudolang-Logo.ico"
 

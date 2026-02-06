@@ -14,9 +14,13 @@ release:
 build-windows:
   cd {{ROOT}} && cross build --release --target x86_64-pc-windows-gnu --features native
 
-# Cross-compile Linux release (Windows only, requires cross)
+# Cross-compile Linux amd64 release (Windows only, requires cross)
 build-linux:
   cd {{ROOT}} && cross build --release --target x86_64-unknown-linux-gnu --features native
+
+# Cross-compile Linux ARM64 release (requires cross)
+build-linux-arm:
+  cd {{ROOT}} && cross build --release --target aarch64-unknown-linux-gnu --features native
 
 # Build WASM (wasm-bindgen via wasm-pack)
 build-wasm:
@@ -47,35 +51,40 @@ build-all: release build-wasm build-wasi
   cp target/wasm32-wasip1/release/fpli.wasm dist/release/wasi/ || true
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*|Windows_NT)
-      cp target/release/fpli.exe dist/release/fpli-x64.exe || true
-      mkdir -p installer/nsis
-      cp dist/release/fpli-x64.exe installer/nsis/fpli.exe || true
+      cp target/release/fpli.exe dist/release/fpli-amd64.exe || true
       if command -v makensis >/dev/null 2>&1; then
-        mkdir -p dist/release
         makensis -DVERSION={{VERSION}} installer/nsis/pseudolang.nsi
-        echo "Installer built at dist/release/pseudolang-setup-x64.exe"
+        echo "Installer built at dist/release/pseudolang-setup-amd64.exe"
       else
         echo "makensis not found, skipping installer"
       fi
       if command -v cross >/dev/null 2>&1; then
-        echo "Cross-compiling Linux target..."
+        echo "Cross-compiling Linux amd64 target..."
         cross build --release --target x86_64-unknown-linux-gnu --features native \
-          && cp target/x86_64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-x64 \
-          || echo "Cross-compilation failed, skipping Linux target"
+          && cp target/x86_64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-amd64 \
+          || echo "Cross-compilation failed, skipping Linux amd64 target"
+        echo "Cross-compiling Linux ARM64 target..."
+        cross build --release --target aarch64-unknown-linux-gnu --features native \
+          && cp target/aarch64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-arm64 \
+          || echo "Cross-compilation failed, skipping Linux ARM64 target"
       else
         echo "cross not found, skipping Linux cross-compilation"
       fi
       ;;
     *)
-      cp target/release/fpli dist/release/fpli-linux-x64 || true
-      chmod +x dist/release/fpli-linux-x64 || true
+      cp target/release/fpli dist/release/fpli-linux-amd64 || true
+      chmod +x dist/release/fpli-linux-amd64 || true
       if command -v cross >/dev/null 2>&1; then
         echo "Cross-compiling Windows target..."
         cross build --release --target x86_64-pc-windows-gnu --features native \
-          && cp target/x86_64-pc-windows-gnu/release/fpli.exe dist/release/fpli-x64.exe \
+          && cp target/x86_64-pc-windows-gnu/release/fpli.exe dist/release/fpli-amd64.exe \
           || echo "Cross-compilation failed, skipping Windows target"
+        echo "Cross-compiling Linux ARM64 target..."
+        cross build --release --target aarch64-unknown-linux-gnu --features native \
+          && cp target/aarch64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-arm64 \
+          || echo "Cross-compilation failed, skipping Linux ARM64 target"
       else
-        echo "cross not found, skipping Windows cross-compilation"
+        echo "cross not found, skipping cross-compilation"
       fi
       if command -v cargo-deb >/dev/null 2>&1; then
         echo "Building Debian package..."
