@@ -7,9 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::rc::Rc;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
 use std::thread;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -319,7 +319,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::Input(prompt) => {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
             {
                 let mut input_str = String::default();
 
@@ -360,18 +360,6 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 }
 
                 Ok(Value::String(input))
-            }
-
-            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-            {
-                if let Some(prompt_expr) = prompt {
-                    evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
-                }
-                Err(runtime_err(
-                    "INPUT is not supported in this environment",
-                    span,
-                    &env,
-                ))
             }
         }
 
@@ -1028,7 +1016,7 @@ fn eval_builtin_sleep(
         return Err(runtime_err("SLEEP requires one argument", span, env));
     }
     io::stdout().flush().unwrap();
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
     {
         let seconds = evaluate_node(&args[0], Rc::clone(env), debug)?;
         match seconds {
@@ -1051,15 +1039,6 @@ fn eval_builtin_sleep(
             "SLEEP function is not fully supported in WebAssembly. The program will continue without pausing.",
         );
         return Ok(Value::Unit);
-    }
-    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-    {
-        evaluate_node(&args[0], Rc::clone(env), debug)?;
-        Err(runtime_err(
-            "SLEEP is not supported in this environment",
-            span,
-            env,
-        ))
     }
 }
 
@@ -1514,7 +1493,7 @@ fn eval_builtin_timestamp(
 ) -> EvalResult {
     match args.len() {
         0 => {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
             {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1535,17 +1514,9 @@ fn eval_builtin_timestamp(
                 let timestamp = seconds_int + millis_part + (nanos / 1_000_000_000.0);
                 return Ok(Value::Float(timestamp));
             }
-            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-            {
-                Err(runtime_err(
-                    "TIMESTAMP is not supported in this environment",
-                    span,
-                    env,
-                ))
-            }
         }
         1 => {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
             {
                 let datetime = evaluate_node(&args[0], Rc::clone(env), debug)?;
                 if let Value::String(dt) = datetime {
@@ -1604,15 +1575,6 @@ fn eval_builtin_timestamp(
                     _ => Err(runtime_err("TIME requires a numeric timestamp", span, env)),
                 };
             }
-            #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-            {
-                evaluate_node(&args[0], Rc::clone(env), debug)?;
-                Err(runtime_err(
-                    "TIMESTAMP is not supported in this environment",
-                    span,
-                    env,
-                ))
-            }
         }
         _ => Err(runtime_err(
             "TIMESTAMP requires 0 or 1 arguments",
@@ -1631,7 +1593,7 @@ fn eval_builtin_time(
     if args.len() != 1 {
         return Err(runtime_err("TIME requires one argument", span, env));
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
     {
         let timestamp = evaluate_node(&args[0], Rc::clone(env), debug)?;
         match timestamp {
@@ -1691,15 +1653,6 @@ fn eval_builtin_time(
             }
             _ => Err(runtime_err("TIME requires a numeric timestamp", span, env)),
         };
-    }
-    #[cfg(all(target_arch = "wasm32", feature = "wasi"))]
-    {
-        evaluate_node(&args[0], Rc::clone(env), debug)?;
-        Err(runtime_err(
-            "TIME is not supported in this environment",
-            span,
-            env,
-        ))
     }
 }
 
