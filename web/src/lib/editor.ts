@@ -9,8 +9,8 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const STORAGE_KEY = "pseudolang-editor-content";
 
-const DEFAULT_CODE = `// Welcome to PseudoLang!
-// Press the Run button or type 'run' in the terminal.
+const DEFAULT_CODE = `COMMENT Welcome to PseudoLang!
+COMMENT Press the Run button or type 'run' in the terminal.
 
 PROCEDURE greet(name)
 {

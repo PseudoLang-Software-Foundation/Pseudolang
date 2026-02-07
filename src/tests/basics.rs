@@ -342,3 +342,17 @@ fn test_boolean_not_operator() {
 fn test_comment_does_not_affect_code() {
     assert_output("x <- 10 COMMENT this is x\nDISPLAY(x)", "10");
 }
+
+#[test]
+fn test_double_slash_comments() {
+    assert_output("// this is a comment\nDISPLAY(42)", "42");
+    assert_output("x <- 10\n// DISPLAY(99)\nDISPLAY(x)", "10");
+    assert_output("// first\n// second\nDISPLAY(1)", "1");
+}
+
+#[test]
+fn test_hash_comments() {
+    assert_output("# this is a comment\nDISPLAY(42)", "42");
+    assert_output("x <- 10\n# DISPLAY(99)\nDISPLAY(x)", "10");
+    assert_output("# first\n# second\nDISPLAY(1)", "1");
+}

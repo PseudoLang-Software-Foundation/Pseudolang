@@ -169,6 +169,16 @@ impl<'a> Lexer<'a> {
                 }
             }
 
+            '#' => {
+                while let Some(c) = self.chars.next() {
+                    self.pos += 1;
+                    if c == '\n' {
+                        return self.next_token();
+                    }
+                }
+                self.next_token()
+            }
+
             '\n' => Some((Token::Newline, Span::new(token_start, self.pos))),
             ' ' | '\t' | '\r' => self.next_token(),
             '{' => Some((Token::OpenBrace, Span::new(token_start, self.pos))),

@@ -86,9 +86,9 @@ cat > "$OUTPUT" << 'TMHEADER'
     "fileTypes": ["psl"],
     "patterns": [
         {
-            "comment": "Line comments (// style)",
-            "match": "//.*$",
-            "name": "comment.line.double-slash.pseudolang"
+            "comment": "Line comments (// and # style)",
+            "match": "(//|#).*$",
+            "name": "comment.line.pseudolang"
         },
         {
             "comment": "Block comments",
