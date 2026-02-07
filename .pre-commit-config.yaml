@@ -32,3 +32,17 @@ repos:
         language: system
         pass_filenames: false
         types: [toml]
+
+      - id: tmlanguage-check
+        name: tmLanguage up-to-date
+        entry: bash -c 'bash scripts/tm/gen_tmlanguage.sh && git diff --exit-code utils/tm/pseudolang.tmLanguage.json'
+        language: system
+        pass_filenames: false
+        files: \.(rs|sh)$
+
+      - id: biome-check
+        name: biome check
+        entry: bash -c 'cd extensions/vscode && bun x biome check .'
+        language: system
+        pass_filenames: false
+        files: extensions/vscode/

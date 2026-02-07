@@ -1,0 +1,121 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "PseudoLang",
+    "scopeName": "source.pseudolang",
+    "fileTypes": ["psl"],
+    "patterns": [
+        {
+            "comment": "Line comments (// style)",
+            "match": "//.*$",
+            "name": "comment.line.double-slash.pseudolang"
+        },
+        {
+            "comment": "Block comments",
+            "begin": "COMMENTBLOCK",
+            "end": "COMMENTBLOCK",
+            "name": "comment.block.pseudolang"
+        },
+        {
+            "comment": "Line comments",
+            "match": "COMMENT.*$",
+            "name": "comment.line.pseudolang"
+        },
+        {
+            "comment": "Control keywords",
+            "match": "\\b(CATCH|CLASS|EACH|ELSE|FOR|IF|IMPORT|IN|PROCEDURE|REPEAT|RETURN|TIMES|TRY|UNTIL)\\b",
+            "name": "keyword.control.pseudolang"
+        },
+        {
+            "comment": "Constants",
+            "match": "\\b(FALSE|NAN|NULL|TRUE)\\b",
+            "name": "constant.language.pseudolang"
+        },
+        {
+            "comment": "Numbers",
+            "match": "\\b\\d+(\\.\\d+)?\\b",
+            "name": "constant.numeric.pseudolang"
+        },
+        {
+            "comment": "Operators",
+            "match": "(<-|\\+|-|\\*|/|=|NOT=|>=|<=|>|<|AND|MOD|NOT|OR)",
+            "name": "keyword.operator.pseudolang"
+        },
+        {
+            "comment": "Math functions",
+            "match": "\\b(ABS|ACOS|ASIN|ATAN|CEIL|COS|DEGREES|EXP|FACTORIAL|FLOOR|GCD|HYPOT|LOG|LOGTEN|LOGTWO|MAX|MIN|NLOG|POW|RADIANS|RANDOM|ROUND|SIN|SQRT|TAN)\\b",
+            "name": "support.function.math.pseudolang"
+        },
+        {
+            "comment": "List functions",
+            "match": "\\b(APPEND|INSERT|LENGTH|RANGE|REMOVE|SORT|SPLIT)\\b",
+            "name": "support.function.list.pseudolang"
+        },
+        {
+            "comment": "String functions",
+            "match": "\\b(CONCAT|CONTAINS|ENDSWITH|FIND|LOWERCASE|REPLACE|STARTSWITH|SUBSTRING|TRIM|UPPERCASE)\\b",
+            "name": "support.function.string.pseudolang"
+        },
+        {
+            "comment": "IO and utility functions",
+            "match": "\\b(DISPLAY|DISPLAYINLINE|EVAL|EXIT|GETARG|HASARG|INPUT|MILLITIME|SLEEP|TIME|TIMESTAMP|TIMEZONE|TIMEZONES|TONUM|TOSTRING)\\b",
+            "name": "support.function.io.pseudolang"
+        },
+        {
+            "comment": "Multiline string",
+            "begin": "\"\"\"",
+            "end": "\"\"\"",
+            "name": "string.quoted.triple.pseudolang"
+        },
+        {
+            "comment": "Formatted string",
+            "begin": "f\"",
+            "end": "\"",
+            "name": "string.quoted.double.format.pseudolang",
+            "patterns": [
+                {
+                    "match": "\\{[^}]*\\}",
+                    "name": "variable.other.pseudolang"
+                },
+                {
+                    "match": "\\\\[ntrb\"\\\\]",
+                    "name": "constant.character.escape.pseudolang"
+                }
+            ]
+        },
+        {
+            "comment": "Raw string",
+            "begin": "r\"",
+            "end": "\"",
+            "name": "string.quoted.double.raw.pseudolang"
+        },
+        {
+            "comment": "Regular string",
+            "begin": "\"",
+            "end": "\"",
+            "name": "string.quoted.double.pseudolang",
+            "patterns": [
+                {
+                    "match": "\\\\[ntrb\"\\\\]",
+                    "name": "constant.character.escape.pseudolang"
+                }
+            ]
+        },
+        {
+            "comment": "Lists",
+            "begin": "\\[",
+            "end": "\\]",
+            "patterns": [{ "include": "$self" }],
+            "name": "meta.structure.list.pseudolang"
+        },
+        {
+            "comment": "Block braces",
+            "match": "[{}]",
+            "name": "punctuation.section.block.pseudolang"
+        },
+        {
+            "comment": "Parentheses",
+            "match": "[()]",
+            "name": "punctuation.section.parens.pseudolang"
+        }
+    ]
+}

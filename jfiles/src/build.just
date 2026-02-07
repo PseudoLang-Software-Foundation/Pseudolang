@@ -103,17 +103,19 @@ build-all: release build-wasm build-wasi
 check:
   cd {{ROOT}} && cargo check
 
-# Format and lint Rust code
+# Format and lint all code
 fmt:
   cd {{ROOT}} && cargo clippy --all-targets --all-features --fix --allow-dirty -- -D warnings
   cd {{ROOT}} && cargo fmt --all
   cd {{ROOT}} && taplo fmt
+  cd {{ROOT}}/extensions/vscode && bun x biome check --write .
 
 # Check formatting and linting without changes
 fmt-check:
   cd {{ROOT}} && cargo fmt --check --all
   cd {{ROOT}} && cargo clippy --all-targets --all-features -- -D warnings
   cd {{ROOT}} && taplo fmt --check
+  cd {{ROOT}}/extensions/vscode && bun x biome check .
 
 # Clean build artifacts
 clean:

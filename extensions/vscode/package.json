@@ -1,0 +1,55 @@
+{
+  "name": "pseudolang-vscode",
+  "displayName": "PseudoLang",
+  "description": "Syntax highlighting for PseudoLang (.psl)",
+  "version": "0.0.0",
+  "publisher": "PseudolangSoftwareFoundation",
+  "icon": "icons/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PseudoLang-Software-Foundation/PseudoLang.git",
+    "directory": "extensions/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "pseudolang",
+        "aliases": [
+          "PseudoLang",
+          "pseudolang"
+        ],
+        "extensions": [
+          ".psl"
+        ],
+        "icon": {
+          "light": "./icons/psl-light.png",
+          "dark": "./icons/psl-dark.png"
+        },
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pseudolang",
+        "scopeName": "source.pseudolang",
+        "path": "./syntaxes/pseudolang.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.14",
+    "@vscode/vsce": "^3.7.1"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "package": "vsce package --out ../../dist/pseudolang-vscode.vsix"
+  }
+}

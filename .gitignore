@@ -22,6 +22,12 @@ agents.md
 claude.md
 gemini.md
 
+# VSCode extension build artifacts
+extensions/vscode/syntaxes/pseudolang.tmLanguage.json
+extensions/vscode/icons/icon.png
+extensions/vscode/node_modules/
+extensions/vscode/*.vsix
+
 # OS
 .DS_Store
 Thumbs.db

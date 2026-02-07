@@ -1,0 +1,7 @@
+.vscode/**
+.vscode-test/**
+node_modules/**
+biome.json
+bun.lock
+*.md
+.gitignore

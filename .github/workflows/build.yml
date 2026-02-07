@@ -139,9 +139,44 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  vscode-extension:
+    name: VSCode Extension
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Verify tmLanguage is current
+        run: |
+          bash scripts/tm/gen_tmlanguage.sh
+          git diff --exit-code utils/tm/pseudolang.tmLanguage.json
+
+      - name: Extract Version
+        run: echo "VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*\"\(.*\)\".*/\1/')" >> $GITHUB_ENV
+
+      - name: Build VSIX
+        run: |
+          mkdir -p extensions/vscode/syntaxes dist
+          cp utils/tm/pseudolang.tmLanguage.json extensions/vscode/syntaxes/
+          cp assets/Pseudolang-Logo.png extensions/vscode/icons/icon.png
+          sed -i 's/"version": "[^"]*"/"version": "'${{ env.VERSION }}'"/' extensions/vscode/package.json
+          cd extensions/vscode
+          bun install
+          bun run lint
+          bun run package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-vscode
+          path: dist/pseudolang-vscode.vsix
+          retention-days: 7
+
   publish:
     name: Publish Release
-    needs: build
+    needs: [build, vscode-extension]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -165,6 +200,7 @@ jobs:
           cp artifacts/pseudolang-aarch64-unknown-linux-gnu/pseudolang_*.deb dist/release/ || true
           cp artifacts/pseudolang-wasm32-wasip1/fpli.wasm dist/release/ || true
           cp artifacts/pseudolang-wasm32-unknown-unknown/fpli_lib-wasm-bindgen.zip dist/release/ || true
+          cp artifacts/pseudolang-vscode/pseudolang-vscode.vsix dist/release/ || true
           chmod +x dist/release/fpli-linux-amd64 dist/release/fpli-linux-arm64
 
       - name: Create Release
@@ -181,3 +217,4 @@ jobs:
             dist/release/fpli.wasm
             dist/release/fpli_lib-wasm-bindgen.zip
             dist/release/pseudolang_*.deb
+            dist/release/pseudolang-vscode.vsix

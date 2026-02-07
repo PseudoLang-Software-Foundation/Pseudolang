@@ -2,6 +2,7 @@ import "../common.just"
 import "./build.just"
 import "./test.just"
 import "./run.just"
+import "./vscode.just"
 
 # Default recipe
 default:
@@ -25,12 +26,12 @@ tag-release:
   git push origin "${TAG}"
   echo "Pushed ${TAG} -- CI will build and publish the release"
 
-# Install build toolchain and targets
+# Install all dev dependencies and build toolchain
 install:
-  cargo install cross
-  cargo install taplo-cli
+  cargo install cross taplo-cli cargo-deb
   rustup target add wasm32-unknown-unknown wasm32-wasip1
   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  cd {{ROOT}}/extensions/vscode && bun install
 
 # Amend no edit
 amend:
