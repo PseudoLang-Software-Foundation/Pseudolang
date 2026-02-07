@@ -104,7 +104,6 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 
 ## To-do
 
-- [ ] Debian package
 - [ ] Proper documentation
 
 <details>
@@ -119,6 +118,8 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 - [ ] Meta programming
 - [ ] Multithreading
 - [ ] Bundled compiler
+- [ ] Dunder info like python
+- [ ] Env information
 
 <details>
 <summary>Misc</summary>

@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -174,9 +176,75 @@ jobs:
           path: dist/pseudolang-vscode.vsix
           retention-days: 7
 
+  website:
+    name: Website
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Download WASI Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-wasm32-wasip1
+          path: artifacts/wasi
+
+      - name: Prepare Web Assets
+        run: |
+          bash scripts/tm/gen_tmlanguage.sh
+          mkdir -p web/public
+          cp artifacts/wasi/fpli.wasm web/public/fpli.wasm
+          cp utils/tm/pseudolang.tmLanguage.json web/public/pseudolang.tmLanguage.json
+
+      - name: Build Website
+        run: |
+          cd web
+          bun install
+          bun run lint
+          bun run build
+
+      - name: Upload Website Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudolang-website
+          path: web/dist/
+          retention-days: 7
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: website
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download Website Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pseudolang-website
+          path: web-dist
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
   publish:
     name: Publish Release
-    needs: [build, vscode-extension]
+    needs: [build, vscode-extension, website]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

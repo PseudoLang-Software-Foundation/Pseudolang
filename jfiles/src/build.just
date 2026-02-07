@@ -109,6 +109,7 @@ fmt:
   cd {{ROOT}} && cargo fmt --all
   cd {{ROOT}} && taplo fmt
   cd {{ROOT}}/extensions/vscode && bun x biome check --write .
+  cd {{ROOT}}/web && bun x biome check --write .
 
 # Check formatting and linting without changes
 fmt-check:
@@ -116,6 +117,7 @@ fmt-check:
   cd {{ROOT}} && cargo clippy --all-targets --all-features -- -D warnings
   cd {{ROOT}} && taplo fmt --check
   cd {{ROOT}}/extensions/vscode && bun x biome check .
+  cd {{ROOT}}/web && bun x biome check .
 
 # Clean build artifacts
 clean:

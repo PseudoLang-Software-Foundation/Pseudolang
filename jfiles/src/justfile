@@ -3,6 +3,7 @@ import "./build.just"
 import "./test.just"
 import "./run.just"
 import "./vscode.just"
+import "./web.just"
 
 # Default recipe
 default:
@@ -32,6 +33,7 @@ install:
   rustup target add wasm32-unknown-unknown wasm32-wasip1
   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
   cd {{ROOT}}/extensions/vscode && bun install
+  cd {{ROOT}}/web && bun install
 
 # Amend no edit
 amend:

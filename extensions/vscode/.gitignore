@@ -1,2 +1,5 @@
+# VSCode extension build artifacts
+syntaxes/pseudolang.tmLanguage.json
+icons/icon.png
 node_modules/
 *.vsix

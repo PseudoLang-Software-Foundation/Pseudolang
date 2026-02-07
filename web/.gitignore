@@ -1,0 +1,6 @@
+# Web IDE build artifacts
+public/fpli.wasm
+public/pseudolang.tmLanguage.json
+dist/
+.astro/
+node_modules/

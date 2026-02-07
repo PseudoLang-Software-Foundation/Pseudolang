@@ -1,0 +1,176 @@
+---
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PseudoLang IDE</title>
+    <script is:inline src="/coi-serviceworker.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <div class="header-logo">
+          <span>PseudoLang</span>
+        </div>
+        <span class="header-version" id="version-badge">v0.0.0</span>
+        <div class="header-spacer"></div>
+        <button class="header-btn secondary" id="btn-layout" title="Toggle layout">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+            <line x1="1.5" y1="8" x2="14.5" y2="8" />
+          </svg>
+          Layout
+        </button>
+        <button class="header-btn primary" id="btn-run" title="Run (Ctrl+Enter)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 2l10 6-10 6V2z" />
+          </svg>
+          Run
+        </button>
+      </header>
+      <div class="ide-panels layout-vertical" id="ide-panels">
+        <div class="panel" id="panel-editor">
+          <div class="panel-header">Editor - main.psl</div>
+          <div class="panel-body">
+            <div id="editor-container"></div>
+          </div>
+        </div>
+        <div class="panel" id="panel-terminal">
+          <div class="panel-header">Terminal</div>
+          <div class="panel-body">
+            <div id="terminal-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      import "../styles/global.css";
+      import "@xterm/xterm/css/xterm.css";
+      import { initLayout, toggleLayout, onLayoutChange } from "../lib/layout";
+      import { initEditor, getEditorContent, resizeEditor } from "../lib/editor";
+      import {
+        enableStdinInput,
+        initTerminal,
+        writeToTerminal,
+        writelnToTerminal,
+        clearTerminal,
+        resizeTerminal,
+        writePrompt,
+      } from "../lib/terminal";
+      import { VirtualFS } from "../lib/filesystem";
+      import { runWasi } from "../lib/wasi";
+      import type { ShellContext } from "../lib/shell";
+
+      declare const __PSEUDOLANG_VERSION__: string;
+      const VERSION = __PSEUDOLANG_VERSION__;
+
+      async function main() {
+        const panelsEl = document.getElementById("ide-panels")!;
+        const editorContainer = document.getElementById("editor-container")!;
+        const terminalContainer = document.getElementById("terminal-container")!;
+        const btnRun = document.getElementById("btn-run")!;
+        const btnLayout = document.getElementById("btn-layout")!;
+        const versionBadge = document.getElementById("version-badge")!;
+
+        versionBadge.textContent = `v${VERSION}`;
+
+        // Initialize layout
+        initLayout(panelsEl);
+
+        // Initialize editor
+        await initEditor(editorContainer);
+
+        // Initialize virtual filesystem
+        const fs = new VirtualFS();
+        fs.writeFile("main.psl", getEditorContent());
+
+        // Shell context for terminal
+        const shellCtx: ShellContext = {
+          fs,
+          write: writeToTerminal,
+          writeln: writelnToTerminal,
+          clear: clearTerminal,
+          version: VERSION,
+          getEditorContent,
+          runPseudolang: async (filename: string) => {
+            fs.writeFile("main.psl", getEditorContent());
+            try {
+              const exitCode = await runWasi(
+                filename,
+                fs,
+                (text) => writeToTerminal(text),
+                (text) => writeToTerminal(`\x1b[31m${text}\x1b[0m`),
+                () => enableStdinInput(),
+              );
+              if (exitCode !== 0) {
+                writelnToTerminal(
+                  `\x1b[31mProcess exited with code ${exitCode}\x1b[0m`,
+                );
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              writelnToTerminal(`\x1b[31mExecution error: ${msg}\x1b[0m`);
+            }
+          },
+        };
+
+        // Initialize terminal
+        initTerminal(terminalContainer, shellCtx);
+
+        // Layout toggle
+        btnLayout.addEventListener("click", () => {
+          toggleLayout();
+        });
+
+        onLayoutChange(() => {
+          requestAnimationFrame(() => {
+            resizeEditor();
+            resizeTerminal();
+          });
+        });
+
+        // Run button
+        btnRun.addEventListener("click", async () => {
+          fs.writeFile("main.psl", getEditorContent());
+          writelnToTerminal("\x1b[2m--- Running main.psl ---\x1b[0m");
+          try {
+            const exitCode = await runWasi(
+              "main.psl",
+              fs,
+              (text) => writeToTerminal(text),
+              (text) => writeToTerminal(`\x1b[31m${text}\x1b[0m`),
+              () => enableStdinInput(),
+            );
+            if (exitCode !== 0) {
+              writelnToTerminal(
+                `\x1b[31mProcess exited with code ${exitCode}\x1b[0m`,
+              );
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            writelnToTerminal(`\x1b[31mExecution error: ${msg}\x1b[0m`);
+          }
+          writePrompt();
+        });
+
+        // Ctrl+Enter to run
+        document.addEventListener("keydown", (e) => {
+          if (e.ctrlKey && e.key === "Enter") {
+            e.preventDefault();
+            btnRun.click();
+          }
+        });
+
+        // Resize handling
+        window.addEventListener("resize", () => {
+          resizeEditor();
+          resizeTerminal();
+        });
+      }
+
+      main().catch(console.error);
+    </script>
+  </body>
+</html>

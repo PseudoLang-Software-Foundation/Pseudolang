@@ -41,8 +41,15 @@ repos:
         files: \.(rs|sh)$
 
       - id: biome-check
-        name: biome check
+        name: biome check (vscode)
         entry: bash -c 'cd extensions/vscode && bun x biome check .'
         language: system
         pass_filenames: false
         files: extensions/vscode/
+
+      - id: biome-check-web
+        name: biome check (web)
+        entry: bash -c 'cd web && bun x biome check .'
+        language: system
+        pass_filenames: false
+        files: web/
