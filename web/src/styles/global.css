@@ -88,6 +88,7 @@ body {
   font-size: 12px;
   cursor: pointer;
   color: var(--text-primary);
+  text-decoration: none;
   transition: background 0.15s;
   -webkit-app-region: no-drag;
 }

@@ -91,8 +91,51 @@ self.onmessage = async (e: MessageEvent) => {
       ];
 
       const wasi = new WASI(msg.args as string[], [], fds);
+      const wasiImport = {
+        ...wasi.wasiImport,
+        poll_oneoff(
+          inPtr: number,
+          outPtr: number,
+          nsubscriptions: number,
+        ): number {
+          const mem = new DataView(
+            (
+              wasi.inst as unknown as {
+                exports: { memory: WebAssembly.Memory };
+              }
+            ).exports.memory.buffer,
+          );
+          const out8 = new Uint8Array(
+            (
+              wasi.inst as unknown as {
+                exports: { memory: WebAssembly.Memory };
+              }
+            ).exports.memory.buffer,
+          );
+          let maxNs = BigInt(0);
+          for (let i = 0; i < nsubscriptions; i++) {
+            const subPtr = inPtr + i * 48;
+            const type = mem.getUint8(subPtr + 8);
+            if (type === 0) {
+              const timeout = mem.getBigUint64(subPtr + 24, true);
+              if (timeout > maxNs) maxNs = timeout;
+            }
+          }
+          if (maxNs > 0) {
+            const ms = Number(maxNs / BigInt(1_000_000));
+            const sleepBuf = new SharedArrayBuffer(4);
+            const sleepArr = new Int32Array(sleepBuf);
+            Atomics.wait(sleepArr, 0, 0, ms);
+          }
+          for (let i = 0; i < nsubscriptions; i++) {
+            const evtPtr = outPtr + i * 32;
+            out8.fill(0, evtPtr, evtPtr + 32);
+          }
+          return 0;
+        },
+      };
       const instance = await WebAssembly.instantiate(wasmModule, {
-        wasi_snapshot_preview1: wasi.wasiImport,
+        wasi_snapshot_preview1: wasiImport,
       });
 
       const exitCode = wasi.start(
