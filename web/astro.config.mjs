@@ -9,6 +9,7 @@ const PSEUDOLANG_VERSION = versionMatch ? versionMatch[1] : "0.0.0";
 
 export default defineConfig({
   output: "static",
+  base: process.env.ASTRO_BASE ?? "/",
   server: { port: 8076 },
   vite: {
     server: {

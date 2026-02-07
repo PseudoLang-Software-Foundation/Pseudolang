@@ -133,7 +133,7 @@ async function runWasiFallback(
     }
   }
 
-  const response = await fetch("/fpli.wasm");
+  const response = await fetch(`${import.meta.env.BASE_URL}fpli.wasm`);
   const module = await WebAssembly.compileStreaming(response);
 
   const entries = new Map();

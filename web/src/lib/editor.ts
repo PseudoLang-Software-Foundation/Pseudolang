@@ -30,7 +30,9 @@ DISPLAY("Random number: " + TOSTRING(x))
 
 export async function initEditor(container: HTMLElement): Promise<void> {
   // Load the tmLanguage grammar
-  const grammarResponse = await fetch("/pseudolang.tmLanguage.json");
+  const grammarResponse = await fetch(
+    `${import.meta.env.BASE_URL}pseudolang.tmLanguage.json`,
+  );
   const grammar = await grammarResponse.json();
 
   // Create Shiki highlighter with ONLY PseudoLang (no bundled languages)

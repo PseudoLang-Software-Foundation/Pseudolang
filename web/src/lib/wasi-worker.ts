@@ -72,7 +72,7 @@ self.onmessage = async (e: MessageEvent) => {
   if (msg.type === "run") {
     try {
       if (!wasmModule) {
-        const response = await fetch("/fpli.wasm");
+        const response = await fetch(`${import.meta.env.BASE_URL}fpli.wasm`);
         wasmModule = await WebAssembly.compileStreaming(response);
       }
 
