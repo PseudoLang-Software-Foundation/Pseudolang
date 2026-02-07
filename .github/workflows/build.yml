@@ -269,6 +269,7 @@ jobs:
           cp artifacts/pseudolang-wasm32-wasip1/fpli.wasm dist/release/ || true
           cp artifacts/pseudolang-wasm32-unknown-unknown/fpli_lib-wasm-bindgen.zip dist/release/ || true
           cp artifacts/pseudolang-vscode/pseudolang-vscode.vsix dist/release/ || true
+          cd artifacts/pseudolang-website && zip -r ../../dist/release/pseudolang-website.zip . && cd ../..
           chmod +x dist/release/fpli-linux-amd64 dist/release/fpli-linux-arm64
 
       - name: Create Release
@@ -286,3 +287,4 @@ jobs:
             dist/release/fpli_lib-wasm-bindgen.zip
             dist/release/pseudolang_*.deb
             dist/release/pseudolang-vscode.vsix
+            dist/release/pseudolang-website.zip

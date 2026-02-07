@@ -56,12 +56,12 @@ struct Environment {
 impl Environment {
     fn new() -> Self {
         Environment {
-            variables: HashMap::new(),
-            procedures: HashMap::new(),
-            output: String::new(),
+            variables: HashMap::new(),  // skipcq: RS-W1079
+            procedures: HashMap::new(), // skipcq: RS-W1079
+            output: String::new(),      // skipcq: RS-W1079
             parent: None,
-            call_stack: Rc::new(RefCell::new(Vec::new())),
-            parsed_flags: Rc::new(HashMap::new()),
+            call_stack: Rc::new(RefCell::new(Vec::new())), // skipcq: RS-W1079
+            parsed_flags: Rc::new(HashMap::new()),         // skipcq: RS-W1079
         }
     }
 
@@ -70,9 +70,9 @@ impl Environment {
         let call_stack = Rc::clone(&parent.borrow().call_stack);
         let parsed_flags = Rc::clone(&parent.borrow().parsed_flags);
         Environment {
-            variables: HashMap::new(),
+            variables: HashMap::new(), // skipcq: RS-W1079
             procedures,
-            output: String::new(),
+            output: String::new(), // skipcq: RS-W1079
             parent: Some(Rc::clone(&parent)),
             call_stack,
             parsed_flags,
@@ -260,7 +260,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         AstNode::BinaryOp(left_expr, op, right_expr) => match op {
             BinaryOperator::And => {
                 let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
-                if let Value::Boolean(false) = left_val {
+                if matches!(left_val, Value::Boolean(false)) {
                     Ok(Value::Boolean(false))
                 } else {
                     let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
@@ -277,7 +277,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             }
             BinaryOperator::Or => {
                 let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
-                if let Value::Boolean(true) = left_val {
+                if matches!(left_val, Value::Boolean(true)) {
                     Ok(Value::Boolean(true))
                 } else {
                     let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;

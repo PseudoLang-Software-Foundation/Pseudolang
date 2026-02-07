@@ -300,7 +300,7 @@ impl Parser {
                 };
 
                 let mut list_accesses = Vec::new();
-                while let Some(Token::OpenBracket) = self.peek() {
+                while matches!(self.peek(), Some(Token::OpenBracket)) {
                     self.advance();
                     let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
@@ -747,7 +747,7 @@ impl Parser {
                 let ident_span = Span::new(start, self.prev_span().end);
                 let mut node = Spanned::new(AstNode::Identifier(name.clone()), ident_span);
 
-                while let Some(Token::OpenBracket) = self.peek() {
+                while matches!(self.peek(), Some(Token::OpenBracket)) {
                     self.advance();
                     let index = self.parse_expression(debug)?;
                     if !self.match_token(&Token::CloseBracket) {
@@ -902,7 +902,7 @@ impl Parser {
             &format!("Parsing block, current token: {:?}", self.peek()),
         );
 
-        while let Some(Token::Newline) = self.peek() {
+        while matches!(self.peek(), Some(Token::Newline)) {
             Self::debug_print(debug, "Skipping newline before block");
             self.advance();
         }
@@ -914,7 +914,7 @@ impl Parser {
                 Self::debug_print(debug, "Found opening brace");
                 self.advance();
 
-                while let Some(Token::Newline) = self.peek() {
+                while matches!(self.peek(), Some(Token::Newline)) {
                     Self::debug_print(debug, "Skipping newline after opening brace");
                     self.advance();
                 }
@@ -931,7 +931,7 @@ impl Parser {
                         _ => statements.push(stmt),
                     }
 
-                    while let Some(Token::Newline) = self.peek() {
+                    while matches!(self.peek(), Some(Token::Newline)) {
                         Self::debug_print(debug, "Skipping newline between statements");
                         self.advance();
                     }
@@ -1039,11 +1039,11 @@ impl Parser {
     fn parse_list(&mut self, debug: bool, start: usize) -> Result<Spanned, PSLError> {
         let mut elements = Vec::new();
         loop {
-            while let Some(Token::Newline) = self.peek() {
+            while matches!(self.peek(), Some(Token::Newline)) {
                 self.advance();
             }
 
-            if let Some(Token::CloseBracket) = self.peek() {
+            if matches!(self.peek(), Some(Token::CloseBracket)) {
                 self.advance();
                 break;
             }
@@ -1052,14 +1052,14 @@ impl Parser {
                 if !self.match_token(&Token::Comma) {
                     return Err(self.create_error("Expected comma between list elements"));
                 }
-                while let Some(Token::Newline) = self.peek() {
+                while matches!(self.peek(), Some(Token::Newline)) {
                     self.advance();
                 }
             }
 
             elements.push(self.parse_expression(debug)?);
 
-            while let Some(Token::Newline) = self.peek() {
+            while matches!(self.peek(), Some(Token::Newline)) {
                 self.advance();
             }
         }
@@ -1081,14 +1081,14 @@ impl Parser {
 
         let then_branch = self.parse_block(debug)?;
 
-        while let Some(Token::Newline) = self.peek() {
+        while matches!(self.peek(), Some(Token::Newline)) {
             self.advance();
         }
 
         let else_branch = if self.peek() == Some(&Token::Else) {
             self.advance();
 
-            while let Some(Token::Newline) = self.peek() {
+            while matches!(self.peek(), Some(Token::Newline)) {
                 self.advance();
             }
 
@@ -1124,7 +1124,7 @@ impl Parser {
                 self.parse_expression(debug)?
             };
 
-            while let Some(Token::Newline) = self.peek() {
+            while matches!(self.peek(), Some(Token::Newline)) {
                 self.advance();
             }
 

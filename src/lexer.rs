@@ -145,6 +145,7 @@ impl<'a> Lexer<'a> {
         tokens
     }
 
+    // skipcq: RS-R1000
     fn next_token(&mut self) -> Option<(Token, Span)> {
         let next_char = self.chars.next()?;
         let token_start = self.pos;
@@ -207,7 +208,7 @@ impl<'a> Lexer<'a> {
             'r' if self.chars.peek() == Some(&'"') => {
                 self.chars.next();
                 self.pos += 1;
-                let mut string = String::new();
+                let mut string = String::new(); // skipcq: RS-W1079
                 for c in self.chars.by_ref() {
                     self.pos += 1;
                     if c == '"' {
@@ -221,15 +222,15 @@ impl<'a> Lexer<'a> {
             'f' if self.chars.peek() == Some(&'"') => {
                 self.chars.next();
                 self.pos += 1;
-                let mut string = String::new();
-                let mut vars = Vec::new();
+                let mut string = String::new(); // skipcq: RS-W1079
+                let mut vars = Vec::new(); // skipcq: RS-W1079
                 while let Some(c) = self.chars.next() {
                     self.pos += 1;
                     if c == '"' {
                         break;
                     }
                     if c == '{' {
-                        let mut var = String::new();
+                        let mut var = String::new(); // skipcq: RS-W1079
                         let mut brace_count = 1;
                         for c in self.chars.by_ref() {
                             self.pos += 1;
@@ -264,7 +265,7 @@ impl<'a> Lexer<'a> {
                     self.chars.next();
                     self.chars.next();
                     self.pos += 2;
-                    let mut string = String::new();
+                    let mut string = String::new(); // skipcq: RS-W1079
                     while let Some(c) = self.chars.next() {
                         self.pos += 1;
                         if c == '"'
@@ -283,7 +284,7 @@ impl<'a> Lexer<'a> {
                         Span::new(token_start, self.pos),
                     ))
                 } else {
-                    let mut string = String::new();
+                    let mut string = String::new(); // skipcq: RS-W1079
                     while let Some(c) = self.chars.next() {
                         self.pos += 1;
                         if c == '\\' {
@@ -395,7 +396,7 @@ impl<'a> Lexer<'a> {
                         if let Some(&'"') = self.chars.peek() {
                             self.chars.next();
                             self.pos += 1;
-                            let mut string = String::new();
+                            let mut string = String::new(); // skipcq: RS-W1079
                             for c in self.chars.by_ref() {
                                 self.pos += 1;
                                 if c == '"' {
