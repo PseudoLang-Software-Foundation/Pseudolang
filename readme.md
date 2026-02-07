@@ -104,7 +104,7 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 
 ## To-do
 
-- [ ] Proper documentation
+- [ ] Proper documentation (integrate into web IDE site via Astro)
 
 <details>
 <summary>Functionality</summary>

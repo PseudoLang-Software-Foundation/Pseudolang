@@ -315,6 +315,7 @@ export function writelnToTerminal(text: string): void {
 }
 
 export function clearTerminal(): void {
+  terminal?.write("\x1b[2J\x1b[H");
   terminal?.clear();
 }
 

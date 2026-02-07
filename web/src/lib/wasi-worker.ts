@@ -97,29 +97,27 @@ self.onmessage = async (e: MessageEvent) => {
           inPtr: number,
           outPtr: number,
           nsubscriptions: number,
+          neventsPtr: number,
         ): number {
-          const mem = new DataView(
-            (
-              wasi.inst as unknown as {
-                exports: { memory: WebAssembly.Memory };
-              }
-            ).exports.memory.buffer,
-          );
-          const out8 = new Uint8Array(
-            (
-              wasi.inst as unknown as {
-                exports: { memory: WebAssembly.Memory };
-              }
-            ).exports.memory.buffer,
-          );
+          const wasmMemory = (
+            wasi.inst as unknown as {
+              exports: { memory: WebAssembly.Memory };
+            }
+          ).exports.memory.buffer;
+          const view = new DataView(wasmMemory);
+          const view8 = new Uint8Array(wasmMemory);
           let maxNs = BigInt(0);
           for (let i = 0; i < nsubscriptions; i++) {
             const subPtr = inPtr + i * 48;
-            const type = mem.getUint8(subPtr + 8);
-            if (type === 0) {
-              const timeout = mem.getBigUint64(subPtr + 24, true);
+            const tag = view.getUint8(subPtr + 8);
+            if (tag === 0) {
+              const timeout = view.getBigUint64(subPtr + 24, true);
               if (timeout > maxNs) maxNs = timeout;
             }
+            const evtPtr = outPtr + i * 32;
+            view8.copyWithin(evtPtr, subPtr, subPtr + 8);
+            view.setUint16(evtPtr + 8, 0, true);
+            view.setUint8(evtPtr + 10, tag);
           }
           if (maxNs > 0) {
             const ms = Number(maxNs / BigInt(1_000_000));
@@ -127,10 +125,7 @@ self.onmessage = async (e: MessageEvent) => {
             const sleepArr = new Int32Array(sleepBuf);
             Atomics.wait(sleepArr, 0, 0, ms);
           }
-          for (let i = 0; i < nsubscriptions; i++) {
-            const evtPtr = outPtr + i * 32;
-            out8.fill(0, evtPtr, evtPtr + 32);
-          }
+          view.setUint32(neventsPtr, nsubscriptions, true);
           return 0;
         },
       };
