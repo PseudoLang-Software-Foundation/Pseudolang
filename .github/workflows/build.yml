@@ -200,7 +200,7 @@ jobs:
 
       - name: Build Website
         env:
-          ASTRO_BASE: /Pseudolang
+          ASTRO_BASE: /Pseudolang/
         run: |
           cd web
           bun install
