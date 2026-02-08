@@ -12,14 +12,14 @@
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.3.0",
+    "@shikijs/monaco": "^3.0.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "astro": "^5.17.0",
     "monaco-editor": "^0.52.0",
     "shiki": "^3.0.0",
-    "@shikijs/monaco": "^3.0.0",
-    "@xterm/xterm": "^5.5.0",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-webgl": "^0.18.0",
-    "@bjorn3/browser_wasi_shim": "^0.3.0"
+    "xterm-readline": "^1.1.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",

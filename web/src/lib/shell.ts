@@ -5,68 +5,24 @@ export interface ShellContext {
   write: (text: string) => void;
   writeln: (text: string) => void;
   clear: () => void;
-  runPseudolang: (filename: string) => Promise<void>;
+  runPseudolang: (args: string[]) => Promise<void>;
   getEditorContent: () => string;
   version: string;
 }
 
 type CommandFn = (args: string[], ctx: ShellContext) => void | Promise<void>;
 
-async function fpliRun(
-  args: string[],
-  ctx: ShellContext,
-  requireFile: boolean,
-): Promise<void> {
-  const file = args[0] || (requireFile ? "" : "main.psl");
-  if (!file) {
-    ctx.writeln("fpli run: missing file operand");
-    ctx.writeln("Usage: fpli run <file.psl>");
-    return;
-  }
-  ctx.fs.writeFile("main.psl", ctx.getEditorContent());
-  if (!ctx.fs.exists(file)) {
-    ctx.writeln(`fpli: ${file}: No such file`);
-    return;
-  }
-  await ctx.runPseudolang(file);
-}
-
-const FPLI_HELP = `PseudoLang Usage:
-    fpli [OPTIONS] COMMAND [ARGS]
-
-COMMANDS:
-    run <file.psl> [PROGRAM_ARGS...]    Execute a PseudoLang program
-
-OPTIONS:
-    -h, --help       Display this help message
-    -V, --version    Display version information
-    -d, --debug      Enable debug output during execution
-
-Examples:
-    fpli run program.psl
-    fpli run main.psl`;
-
 const commands: Record<string, CommandFn> = {
   fpli: async (args, ctx) => {
-    if (args.length === 0 || args[0] === "-h" || args[0] === "--help") {
-      ctx.writeln(FPLI_HELP);
-      return;
-    }
-    if (args[0] === "-V" || args[0] === "--version") {
-      ctx.writeln(`PseudoLang version ${ctx.version}`);
-      return;
-    }
-    const subcommand = args[0];
-    if (subcommand === "run") {
-      await fpliRun(args.slice(1), ctx, true);
-      return;
-    }
-    ctx.writeln(`fpli: unknown command '${subcommand}'`);
-    ctx.writeln("Run 'fpli --help' for usage.");
+    ctx.fs.writeFile("main.psl", ctx.getEditorContent());
+    await ctx.runPseudolang(["fpli", ...args]);
   },
 
   run: async (args, ctx) => {
-    await fpliRun(args, ctx, false);
+    ctx.fs.writeFile("main.psl", ctx.getEditorContent());
+    const wasiArgs = ["fpli", "run", ...args];
+    if (!args.some((a) => a.endsWith(".psl"))) wasiArgs.push("main.psl");
+    await ctx.runPseudolang(wasiArgs);
   },
 
   ls: (args, ctx) => {

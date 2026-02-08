@@ -48,7 +48,7 @@ function serializeFs(fs: VirtualFS): Record<string, Uint8Array> {
 }
 
 export async function runWasi(
-  filename: string,
+  args: string[],
   fs: VirtualFS,
   onStdout: (text: string) => void,
   onStderr: (text: string) => void,
@@ -57,7 +57,7 @@ export async function runWasi(
   const files = serializeFs(fs);
 
   if (!HAS_SAB) {
-    return runWasiFallback(filename, files, onStdout, onStderr);
+    return runWasiFallback(args, files, onStdout, onStderr);
   }
 
   const w = ensureWorker();
@@ -88,14 +88,14 @@ export async function runWasi(
 
     w.postMessage({
       type: "run",
-      args: ["fpli", "run", filename],
+      args,
       files,
     });
   });
 }
 
 async function runWasiFallback(
-  filename: string,
+  args: string[],
   files: Record<string, Uint8Array>,
   onStdout: (text: string) => void,
   onStderr: (text: string) => void,
@@ -148,7 +148,7 @@ async function runWasiFallback(
     new PreopenDirectory(".", entries),
   ];
 
-  const wasi = new WASI(["fpli", "run", filename], [], fds);
+  const wasi = new WASI(args, [], fds);
   const instance = await WebAssembly.instantiate(module, {
     wasi_snapshot_preview1: wasi.wasiImport,
   });

@@ -37,6 +37,8 @@ body {
 #app {
   display: grid;
   height: 100vh;
+  max-width: 100vw;
+  overflow: hidden;
   grid-template-rows: 36px 1fr;
 }
 
@@ -165,6 +167,7 @@ body {
 #editor-container {
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 /* Terminal container */
@@ -172,6 +175,7 @@ body {
   width: 100%;
   height: 100%;
   padding: 4px;
+  overflow: hidden;
 }
 
 /* Scrollbar styling */
@@ -201,4 +205,21 @@ body {
   height: 100%;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .header {
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .header-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  #terminal-container {
+    padding: 2px;
+  }
 }

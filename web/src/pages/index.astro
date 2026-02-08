@@ -59,16 +59,16 @@
       import { initLayout, toggleLayout, onLayoutChange } from "../lib/layout";
       import { initEditor, getEditorContent, resizeEditor } from "../lib/editor";
       import {
-        enableStdinInput,
         initTerminal,
+        readStdinLine,
         writeToTerminal,
         writelnToTerminal,
         clearTerminal,
         resizeTerminal,
-        writePrompt,
+        injectCommand,
       } from "../lib/terminal";
       import { VirtualFS } from "../lib/filesystem";
-      import { runWasi } from "../lib/wasi";
+      import { runWasi, sendStdinInput } from "../lib/wasi";
       import type { ShellContext } from "../lib/shell";
 
       declare const __PSEUDOLANG_VERSION__: string;
@@ -102,15 +102,16 @@
           clear: clearTerminal,
           version: VERSION,
           getEditorContent,
-          runPseudolang: async (filename: string) => {
-            fs.writeFile("main.psl", getEditorContent());
+          runPseudolang: async (args: string[]) => {
             try {
               const exitCode = await runWasi(
-                filename,
+                args,
                 fs,
                 (text) => writeToTerminal(text),
                 (text) => writeToTerminal(`\x1b[31m${text}\x1b[0m`),
-                () => enableStdinInput(),
+                () => {
+                readStdinLine().then((line) => sendStdinInput(line));
+              },
               );
               if (exitCode !== 0) {
                 writelnToTerminal(
@@ -139,28 +140,9 @@
           });
         });
 
-        // Run button
-        btnRun.addEventListener("click", async () => {
-          fs.writeFile("main.psl", getEditorContent());
-          writelnToTerminal("\x1b[2m--- Running main.psl ---\x1b[0m");
-          try {
-            const exitCode = await runWasi(
-              "main.psl",
-              fs,
-              (text) => writeToTerminal(text),
-              (text) => writeToTerminal(`\x1b[31m${text}\x1b[0m`),
-              () => enableStdinInput(),
-            );
-            if (exitCode !== 0) {
-              writelnToTerminal(
-                `\x1b[31mProcess exited with code ${exitCode}\x1b[0m`,
-              );
-            }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            writelnToTerminal(`\x1b[31mExecution error: ${msg}\x1b[0m`);
-          }
-          writePrompt();
+        // Run button — inject "run" through prompt loop (bypasses readline input)
+        btnRun.addEventListener("click", () => {
+          injectCommand("run");
         });
 
         // Ctrl+Enter to run
