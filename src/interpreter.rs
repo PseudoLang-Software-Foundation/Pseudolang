@@ -99,6 +99,15 @@ impl DictInner {
         }
     }
 
+    /// Whether `key` is present, without building the `Option<usize>` that
+    /// `position` returns.
+    fn contains(&self, key: &DictKey) -> bool {
+        match &self.index {
+            Some(index) => index.contains_key(key),
+            None => self.entries.iter().any(|(k, _)| k == key),
+        }
+    }
+
     /// Insert or overwrite a key, preserving insertion order.
     fn insert(&mut self, key: DictKey, value: Value) {
         if let Some(pos) = self.position(&key) {
@@ -169,10 +178,6 @@ impl std::fmt::Debug for Dict {
 }
 
 impl Dict {
-    fn new() -> Self {
-        Dict::default()
-    }
-
     fn len(&self) -> usize {
         self.inner.entries.len()
     }
@@ -192,7 +197,7 @@ impl Dict {
     }
 
     fn contains_key(&self, key: &DictKey) -> bool {
-        self.inner.position(key).is_some()
+        self.inner.contains(key)
     }
 
     fn insert(&mut self, key: DictKey, value: Value) {
@@ -418,7 +423,7 @@ fn stdout_is_terminal() -> bool {
 impl OutputSink {
     fn new(mode: OutputMode, debug: bool) -> Self {
         match mode {
-            OutputMode::Capture => OutputSink::Capture(String::new()),
+            OutputMode::Capture => OutputSink::Capture(String::default()),
             OutputMode::Stdout => OutputSink::Stream {
                 writer: io::BufWriter::with_capacity(STREAM_BUF_BYTES, io::stdout().lock()),
                 error: None,
@@ -520,7 +525,7 @@ impl OutputSink {
             OutputSink::Capture(buf) => std::mem::take(buf),
             OutputSink::Stream { writer, error, .. } => {
                 record_io(error, writer.flush());
-                String::new()
+                String::default()
             }
         }
     }
@@ -639,13 +644,11 @@ impl Environment {
         name: &str,
         f: impl FnOnce(&mut Value) -> Result<T, E>,
     ) -> Option<Result<T, E>> {
-        let copied_down = if self.variables.contains_key(name) {
-            false
-        } else {
+        let copied_down = !self.variables.contains_key(name);
+        if copied_down {
             let inherited = self.parent.as_ref()?.borrow().get(name)?;
             self.variables.insert(name.to_string(), inherited);
-            true
-        };
+        }
         let result = f(self.variables.get_mut(name)?);
         if result.is_err() && copied_down {
             self.variables.remove(name);
@@ -1058,7 +1061,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::Dictionary(pairs) => {
-            let mut entries = Dict::new();
+            let mut entries = Dict::default();
             for (key_expr, value_expr) in pairs {
                 let key_val = evaluate_node(key_expr, Rc::clone(&env), debug)?;
                 let key = value_to_key(&key_val).map_err(|msg| runtime_err(msg, span, &env))?;
@@ -3065,7 +3068,7 @@ fn eval_builtin_dictionary(
     if !args.is_empty() {
         return Err(runtime_err("DICTIONARY takes no arguments", span, env));
     }
-    Ok(Value::Dictionary(Dict::new()))
+    Ok(Value::Dictionary(Dict::default()))
 }
 
 fn eval_builtin_keys(

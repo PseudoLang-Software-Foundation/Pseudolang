@@ -113,8 +113,8 @@ fn take_children(node: &mut AstNode, out: &mut Vec<Spanned>) {
 
         AstNode::TryCatch {
             try_block: a,
-            error_var: _,
             catch_block: b,
+            ..
         } => {
             push(out, *a);
             push(out, *b);
