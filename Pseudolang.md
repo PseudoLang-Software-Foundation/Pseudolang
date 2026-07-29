@@ -290,6 +290,118 @@ DISPLAY(matrix[1][1]) COMMENT Should be 1
 
 Multi-dimensional arrays (also called matrices or N-D arrays) can be created and manipulated using nested lists. All list operations (LENGTH, APPEND, REMOVE, etc.) can be applied to any dimension of the array.
 
+## Dictionary operations
+
+`aDict <- {"name": "Bob", "age": 30}`
+
+Creates a new dictionary mapping each key to its value and assigns it to aDict. A dictionary literal is only recognised in expression position; a `{` at the start of a statement always opens a block, never a dictionary.
+
+`aDict <- {}` or `aDict <- DICTIONARY()`
+
+Both create a new empty dictionary. `DICTIONARY()` takes no arguments and is useful where a `{}` would be ambiguous, such as at the start of a statement.
+
+```psl
+aDict <- {
+    "a": 1,
+    "b": 2
+}
+```
+
+A dictionary literal may span multiple lines. Newlines are allowed before and after keys, colons, values and commas.
+
+`aDict[k]`
+
+Evaluates to the value stored under key k. Reading a key that is not present is an error: `Key not found: k`.
+
+`aDict[k] <- b`
+
+Assigns b to key k. Unlike a list index, a key that does not exist yet is created rather than being an error; an existing key is overwritten in place.
+
+Keys must be strings, integers or booleans. Using a float, NULL, NAN, a list or a dictionary as a key raises `Dictionary keys must be strings, integers, or booleans`. Keys of different types never collide, so `1` and `"1"` are two distinct keys — note that because keys display unquoted, two such keys look alike when the whole dictionary is displayed.
+
+```psl
+aDict <- {"s": 1, 2: "two", TRUE: "yes"}
+DISPLAY(aDict[2]) COMMENT Displays two
+```
+
+Dictionaries preserve insertion order. Overwriting an existing key keeps that key in its original position, while a brand new key is appended at the end. `DISPLAY`, `KEYS`, `VALUES` and `FOR EACH` all report that same order.
+
+```psl
+aDict <- {"a": 1, "b": 2}
+aDict["a"] <- 99 COMMENT "a" stays first
+aDict["c"] <- 3  COMMENT "c" is appended
+DISPLAY(aDict)   COMMENT Displays {a: 99, b: 2, c: 3}
+```
+
+Displaying a dictionary produces `{key: value, key: value}`, with scalars written unquoted exactly the way lists render as `[apple, banana]`. An empty dictionary displays as `{}`.
+
+`aDict <- bDict`
+
+Assigns a copy of the dictionary bDict to aDict. As with lists, dictionaries are copied on assignment and when passed to a procedure, so changes made through one name are not visible through the other.
+
+`aDict = bDict` or `aDict NOT= bDict`
+
+Two dictionaries are equal when they hold the same set of keys with equal values, regardless of insertion order. The comparison is deep, so nested lists and dictionaries are compared structurally. The ordering operators `<`, `>`, `<=` and `>=` are not supported for dictionaries.
+
+`aDict + bDict`
+
+The `+` operator merges two dictionaries into a new dictionary. Keys from aDict keep their positions, keys only in bDict are appended, and where both sides define a key the value from bDict wins.
+
+Example:
+
+```psl
+a <- {"x": 1, "y": 2}
+b <- {"y": 99, "z": 3}
+DISPLAY(a + b)
+```
+
+This will display {x: 1, y: 99, z: 3}.
+
+```psl
+FOR EACH key IN aDict
+{
+ <statement(s)>
+}
+```
+
+Iterating a dictionary assigns each of its keys to the loop variable, in insertion order. Use `aDict[key]` inside the body to reach the matching value.
+
+`KEYS(aDict)`
+
+Returns a list of the dictionary's keys in insertion order.
+
+`VALUES(aDict)`
+
+Returns a list of the dictionary's values in insertion order, aligned element by element with `KEYS(aDict)`.
+
+`HASKEY(aDict, k)`
+
+Returns TRUE if the dictionary contains key k, FALSE otherwise. A k that could never be a key, such as a float or NULL, is simply reported as absent, so `HASKEY` is safe to use as a guard for any value.
+
+`GETKEY(aDict, k)` or `GETKEY(aDict, k, default)`
+
+Returns the value stored under key k. With a third argument, a missing key evaluates to default instead of raising an error; without one, a missing key raises `Key not found: k`.
+
+`SETKEY(aDict, k, b)`
+
+Stores b under key k in the dictionary variable aDict, creating the key if needed, and returns b. Like `APPEND`, the first argument must be a variable rather than a literal because the dictionary is modified in place.
+
+`REMOVEKEY(aDict, k)`
+
+Removes key k from the dictionary variable aDict and returns the value that was stored there. Removing a key that is not present raises `Key not found: k`.
+
+`REMOVE(aDict, k)`
+
+`REMOVE` also accepts a dictionary, where it behaves exactly like `REMOVEKEY` and removes by key rather than by index.
+
+`LENGTH(aDict)`
+
+Evaluates to the number of key-value pairs in the dictionary.
+
+`DICTIONARY`, `KEYS`, `VALUES`, `HASKEY`, `GETKEY`, `SETKEY` and `REMOVEKEY` are built-in names. Like every other built-in, they are resolved before user-defined procedures, so a procedure declared with one of those names is never called.
+
+Dictionaries interpolate into formatted strings the same way lists do, so `f"{aDict}"` renders the `{key: value}` form. Writing a dictionary *literal* inside a formatted string works but is fragile: the lexer finds the end of an interpolation slot by counting braces, so a slot such as `f"{ {"a": "}"} }"` ends early on the `}` inside the string value and fails to parse. Build the dictionary in a variable first when a value may contain a brace.
+
 ```psl
 PROCEDURE procName(a, b)
 {
@@ -376,6 +488,10 @@ String (64 bit)
 `TRUE` or `FALSE`
 
 Boolean
+
+`{"a": 1}`
+
+Dictionary (insertion-ordered key-value pairs; keys may be strings, integers or booleans)
 
 `NULL`
 

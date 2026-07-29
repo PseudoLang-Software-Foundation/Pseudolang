@@ -22,6 +22,7 @@ pub enum AstNode {
     String(String),
     Boolean(bool),
     List(Vec<Spanned>),
+    Dictionary(Vec<(Spanned, Spanned)>),
     Null,
     NaN,
 
@@ -443,7 +444,9 @@ impl Parser {
                         }
                         Ok(self.spanned_from(AstNode::Return(Box::new(expr)), start))
                     }
-                } else if self.is_expression_start() {
+                } else if self.is_expression_start()
+                    || matches!(self.peek(), Some(Token::OpenBrace))
+                {
                     let expr = self.parse_expression(debug)?;
                     Ok(self.spanned_from(AstNode::Return(Box::new(expr)), start))
                 } else {
@@ -858,6 +861,7 @@ impl Parser {
                     Ok(expr)
                 }
                 Some(Token::OpenBracket) => self.parse_list(debug, start),
+                Some(Token::OpenBrace) => self.parse_dict(debug, start),
                 _ => Err(self.create_error("Unexpected token in expression")),
             },
         }
@@ -1064,6 +1068,51 @@ impl Parser {
             }
         }
         Ok(self.spanned_from(AstNode::List(elements), start))
+    }
+
+    fn parse_dict(&mut self, debug: bool, start: usize) -> Result<Spanned, PSLError> {
+        let mut entries: Vec<(Spanned, Spanned)> = Vec::new();
+        loop {
+            while matches!(self.peek(), Some(Token::Newline)) {
+                self.advance();
+            }
+
+            if matches!(self.peek(), Some(Token::CloseBrace)) {
+                self.advance();
+                break;
+            }
+
+            if !entries.is_empty() {
+                if !self.match_token(&Token::Comma) {
+                    return Err(self.create_error("Expected comma between dictionary entries"));
+                }
+                while matches!(self.peek(), Some(Token::Newline)) {
+                    self.advance();
+                }
+            }
+
+            let key = self.parse_expression(debug)?;
+
+            while matches!(self.peek(), Some(Token::Newline)) {
+                self.advance();
+            }
+
+            if !self.match_token(&Token::Colon) {
+                return Err(self.create_error("Expected ':' after dictionary key"));
+            }
+
+            while matches!(self.peek(), Some(Token::Newline)) {
+                self.advance();
+            }
+
+            let value = self.parse_expression(debug)?;
+            entries.push((key, value));
+
+            while matches!(self.peek(), Some(Token::Newline)) {
+                self.advance();
+            }
+        }
+        Ok(self.spanned_from(AstNode::Dictionary(entries), start))
     }
 
     fn parse_if(&mut self, debug: bool) -> Result<Spanned, PSLError> {

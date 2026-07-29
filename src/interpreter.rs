@@ -20,9 +20,59 @@ enum Value {
     String(String),
     Boolean(bool),
     List(Vec<Value>),
+    /// Insertion-ordered association vector. Overwriting an existing key keeps
+    /// its original position; a new key is appended.
+    Dictionary(Vec<(DictKey, Value)>),
     Unit,
     Null,
     NaN,
+}
+
+/// The only value kinds allowed as dictionary keys.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum DictKey {
+    String(String),
+    Integer(BigInt),
+    Boolean(bool),
+}
+
+/// Coerce a runtime value into a dictionary key, rejecting the illegal kinds.
+fn value_to_key(value: &Value) -> Result<DictKey, String> {
+    match value {
+        Value::String(s) => Ok(DictKey::String(s.clone())),
+        Value::Integer(n) => Ok(DictKey::Integer(n.clone())),
+        Value::Boolean(b) => Ok(DictKey::Boolean(*b)),
+        _ => Err("Dictionary keys must be strings, integers, or booleans".to_string()),
+    }
+}
+
+fn key_to_value(key: &DictKey) -> Value {
+    match key {
+        DictKey::String(s) => Value::String(s.clone()),
+        DictKey::Integer(n) => Value::Integer(n.clone()),
+        DictKey::Boolean(b) => Value::Boolean(*b),
+    }
+}
+
+fn key_to_string(key: &DictKey) -> String {
+    match key {
+        DictKey::String(s) => s.clone(),
+        DictKey::Integer(n) => n.to_string(),
+        DictKey::Boolean(b) => b.to_string(),
+    }
+}
+
+/// Insert or overwrite a key, preserving insertion order.
+fn dict_insert(entries: &mut Vec<(DictKey, Value)>, key: DictKey, value: Value) {
+    if let Some(slot) = entries.iter_mut().find(|(k, _)| *k == key) {
+        slot.1 = value;
+    } else {
+        entries.push((key, value));
+    }
+}
+
+fn dict_get<'a>(entries: &'a [(DictKey, Value)], key: &DictKey) -> Option<&'a Value> {
+    entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
 enum Interruption {
@@ -228,6 +278,17 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 values.push(evaluate_node(elem, Rc::clone(&env), debug)?);
             }
             Ok(Value::List(values))
+        }
+
+        AstNode::Dictionary(pairs) => {
+            let mut entries: Vec<(DictKey, Value)> = Vec::new();
+            for (key_expr, value_expr) in pairs {
+                let key_val = evaluate_node(key_expr, Rc::clone(&env), debug)?;
+                let key = value_to_key(&key_val).map_err(|msg| runtime_err(msg, span, &env))?;
+                let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
+                dict_insert(&mut entries, key, value);
+            }
+            Ok(Value::Dictionary(entries))
         }
 
         AstNode::Identifier(name) => match env.borrow().get(name) {
@@ -462,6 +523,18 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             let current_value = evaluate_node(list, Rc::clone(&env), debug)?;
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
+            if let Value::Dictionary(entries) = &current_value {
+                let key = value_to_key(&index_val).map_err(|msg| runtime_err(msg, span, &env))?;
+                return match dict_get(entries, &key) {
+                    Some(value) => Ok(value.clone()),
+                    None => Err(runtime_err(
+                        format!("Key not found: {}", key_to_string(&key)),
+                        span,
+                        &env,
+                    )),
+                };
+            }
+
             match (current_value, index_val) {
                 (Value::List(elements), Value::Integer(i)) => {
                     let idx = &i - BigInt::one();
@@ -528,63 +601,9 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         AstNode::ListAssignment(list, index, value) => {
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
             let new_val = evaluate_node(value, Rc::clone(&env), debug)?;
-
-            if let AstNode::Identifier(name) = &list.node {
-                let mut elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
-                    elements
-                } else {
-                    return Err(runtime_err(
-                        format!("Variable {} is not a list", name),
-                        span,
-                        &env,
-                    ));
-                };
-
-                if let Value::Integer(i) = index_val {
-                    let idx = &i - BigInt::one();
-                    match idx.to_usize() {
-                        Some(uidx) if uidx < elements.len() => {
-                            let ret = new_val.clone();
-                            elements[uidx] = new_val;
-                            env.borrow_mut().set(name.clone(), Value::List(elements));
-                            Ok(ret)
-                        }
-                        _ => Err(runtime_err("List index out of bounds", span, &env)),
-                    }
-                } else {
-                    Err(runtime_err("Invalid list index", span, &env))
-                }
-            } else if let AstNode::ListAccess(inner_list, inner_index) = &list.node {
-                let list_val = evaluate_node(inner_list, Rc::clone(&env), debug)?;
-                let index_inner = evaluate_node(inner_index, Rc::clone(&env), debug)?;
-
-                if let (Value::List(mut elements), Value::Integer(i)) = (list_val, index_inner) {
-                    let idx = &i - BigInt::one();
-                    if let Some(uidx) = idx.to_usize()
-                        && uidx < elements.len()
-                        && let Value::Integer(j) = index_val
-                    {
-                        let jdx = &j - BigInt::one();
-                        if let Some(ujdx) = jdx.to_usize()
-                            && let Value::List(mut inner_elements) =
-                                std::mem::replace(&mut elements[uidx], Value::Unit)
-                            && ujdx < inner_elements.len()
-                        {
-                            let ret = new_val.clone();
-                            inner_elements[ujdx] = new_val;
-                            elements[uidx] = Value::List(inner_elements);
-
-                            if let AstNode::Identifier(name) = &inner_list.node {
-                                env.borrow_mut().set(name.clone(), Value::List(elements));
-                                return Ok(ret);
-                            }
-                        }
-                    }
-                }
-                Err(runtime_err("Invalid nested list assignment", span, &env))
-            } else {
-                Err(runtime_err("Invalid list assignment target", span, &env))
-            }
+            let ret = new_val.clone();
+            assign_indexed(list, index_val, new_val, &env, span, debug)?;
+            Ok(ret)
         }
 
         AstNode::Substring(string, start, end) => {
@@ -687,7 +706,19 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     }
                     Ok(result)
                 }
-                _ => Err(runtime_err("FOR EACH requires list or string", span, &env)),
+                Value::Dictionary(entries) => {
+                    let mut result = Value::Unit;
+                    for (key, _) in entries {
+                        env.borrow_mut().set(var_name.clone(), key_to_value(&key));
+                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                    }
+                    Ok(result)
+                }
+                _ => Err(runtime_err(
+                    "FOR EACH requires list, string, or dictionary",
+                    span,
+                    &env,
+                )),
             }
         }
 
@@ -716,8 +747,9 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             match list_val {
                 Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
                 Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
+                Value::Dictionary(entries) => Ok(Value::Integer(BigInt::from(entries.len()))),
                 _ => Err(runtime_err(
-                    "LENGTH requires a list or string argument",
+                    "LENGTH requires a list, string, or dictionary argument",
                     span,
                     &env,
                 )),
@@ -787,14 +819,19 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &list.node {
-                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
-                    elements
-                } else {
-                    return Err(runtime_err(
-                        format!("Variable {} is not a list", name),
-                        span,
-                        &env,
-                    ));
+                let current = env.borrow().get(name);
+                let elements = match current {
+                    Some(Value::Dictionary(entries)) => {
+                        return dict_remove_entry(name, entries, &index_val, &env, span);
+                    }
+                    Some(Value::List(elements)) => elements,
+                    _ => {
+                        return Err(runtime_err(
+                            format!("Variable {} is not a list", name),
+                            span,
+                            &env,
+                        ));
+                    }
                 };
 
                 if let Value::Integer(i) = index_val {
@@ -953,6 +990,142 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
     }
 }
 
+/// Remove `key_val` from the dictionary held by variable `name`, writing the
+/// shortened dictionary back and returning the removed value.
+fn dict_remove_entry(
+    name: &str,
+    mut entries: Vec<(DictKey, Value)>,
+    key_val: &Value,
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+) -> EvalResult {
+    let key = value_to_key(key_val).map_err(|msg| runtime_err(msg, span, env))?;
+    match entries.iter().position(|(k, _)| *k == key) {
+        Some(pos) => {
+            let (_, removed) = entries.remove(pos);
+            env.borrow_mut()
+                .set(name.to_string(), Value::Dictionary(entries));
+            Ok(removed)
+        }
+        None => Err(runtime_err(
+            format!("Key not found: {}", key_to_string(&key)),
+            span,
+            env,
+        )),
+    }
+}
+
+/// Write `new_val` at `index` inside a list or dictionary, returning the
+/// updated container. Missing list indices are an error; missing dictionary
+/// keys are created.
+fn container_set(container: Value, index: Value, new_val: Value) -> Result<Value, String> {
+    match container {
+        Value::List(mut elements) => {
+            if let Value::Integer(i) = index {
+                let idx = &i - BigInt::one();
+                match idx.to_usize() {
+                    Some(uidx) if uidx < elements.len() => {
+                        elements[uidx] = new_val;
+                        Ok(Value::List(elements))
+                    }
+                    _ => Err("List index out of bounds".to_string()),
+                }
+            } else {
+                Err("Invalid list index".to_string())
+            }
+        }
+        Value::Dictionary(mut entries) => {
+            let key = value_to_key(&index)?;
+            dict_insert(&mut entries, key, new_val);
+            Ok(Value::Dictionary(entries))
+        }
+        _ => Err("Invalid index assignment - expected list or dictionary".to_string()),
+    }
+}
+
+/// Read `container[index]` while walking an assignment path. Only lists and
+/// dictionaries can appear as intermediate containers.
+fn container_get(container: &Value, index: &Value) -> Result<Value, String> {
+    match container {
+        Value::List(elements) => {
+            if let Value::Integer(i) = index {
+                let idx = i - BigInt::one();
+                match idx.to_usize() {
+                    Some(uidx) if uidx < elements.len() => Ok(elements[uidx].clone()),
+                    _ => Err("List index out of bounds".to_string()),
+                }
+            } else {
+                Err("Invalid list index".to_string())
+            }
+        }
+        Value::Dictionary(entries) => {
+            let key = value_to_key(index)?;
+            match dict_get(entries, &key) {
+                Some(value) => Ok(value.clone()),
+                None => Err(format!("Key not found: {}", key_to_string(&key))),
+            }
+        }
+        _ => Err("Invalid index assignment - expected list or dictionary".to_string()),
+    }
+}
+
+/// Rebuild `container` with `new_val` written at the nested location named by
+/// `path`, which is ordered from the root container outward.
+fn set_in_path(container: Value, path: &[Value], new_val: Value) -> Result<Value, String> {
+    let (index, rest) = path
+        .split_first()
+        .ok_or_else(|| "Invalid list assignment target".to_string())?;
+    if rest.is_empty() {
+        return container_set(container, index.clone(), new_val);
+    }
+    let inner = container_get(&container, index)?;
+    let updated_inner = set_in_path(inner, rest, new_val)?;
+    container_set(container, index.clone(), updated_inner)
+}
+
+/// Assign into `target[index_val]`, where `target` is either a variable or
+/// itself an indexed access. Nested paths of any depth are rebuilt from the
+/// inside out and written back to the variable at the root of the path. Every
+/// index expression along the path is evaluated exactly once, so indices with
+/// side effects (a procedure call, RANDOM, INPUT) read and write the same slot.
+fn assign_indexed(
+    target: &Spanned,
+    index_val: Value,
+    new_val: Value,
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> Result<(), Interruption> {
+    let mut path = vec![index_val];
+    let mut current = target;
+    let name = loop {
+        match &current.node {
+            AstNode::Identifier(name) => break name.clone(),
+            AstNode::ListAccess(inner_target, inner_index) => {
+                path.push(evaluate_node(inner_index, Rc::clone(env), debug)?);
+                current = inner_target;
+            }
+            _ => return Err(runtime_err("Invalid list assignment target", span, env)),
+        }
+    };
+    path.reverse();
+
+    let container = match env.borrow().get(&name) {
+        Some(value) if matches!(value, Value::List(_) | Value::Dictionary(_)) => value,
+        _ => {
+            return Err(runtime_err(
+                format!("Variable {} is not a list or dictionary", name),
+                span,
+                env,
+            ));
+        }
+    };
+    let updated =
+        set_in_path(container, &path, new_val).map_err(|msg| runtime_err(msg, span, env))?;
+    env.borrow_mut().set(name, updated);
+    Ok(())
+}
+
 // skipcq: RS-R1000
 fn eval_builtin(
     name: &str,
@@ -1057,6 +1230,13 @@ fn eval_builtin(
         "RANGE" => Some(eval_builtin_range(args, env, span, debug)),
         "STARTSWITH" => Some(eval_builtin_startswith(args, env, span, debug)),
         "ENDSWITH" => Some(eval_builtin_endswith(args, env, span, debug)),
+        "DICTIONARY" => Some(eval_builtin_dictionary(args, env, span)),
+        "KEYS" => Some(eval_builtin_keys(args, env, span, debug)),
+        "VALUES" => Some(eval_builtin_values(args, env, span, debug)),
+        "HASKEY" => Some(eval_builtin_haskey(args, env, span, debug)),
+        "GETKEY" => Some(eval_builtin_getkey(args, env, span, debug)),
+        "SETKEY" => Some(eval_builtin_setkey(args, env, span, debug)),
+        "REMOVEKEY" => Some(eval_builtin_removekey(args, env, span, debug)),
         "HASARG" => Some(eval_builtin_hasarg(args, env, span, debug)),
         "GETARG" => Some(eval_builtin_getarg(args, env, span, debug)),
         _ => None,
@@ -1159,8 +1339,9 @@ fn eval_builtin_length(
     match arg {
         Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
         Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
+        Value::Dictionary(entries) => Ok(Value::Integer(BigInt::from(entries.len()))),
         _ => Err(runtime_err(
-            "LENGTH requires a list or string argument",
+            "LENGTH requires a list, string, or dictionary argument",
             span,
             env,
         )),
@@ -1980,6 +2161,184 @@ fn eval_builtin_getarg(
     }
 }
 
+fn eval_builtin_dictionary(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+) -> EvalResult {
+    if !args.is_empty() {
+        return Err(runtime_err("DICTIONARY takes no arguments", span, env));
+    }
+    Ok(Value::Dictionary(Vec::new()))
+}
+
+fn eval_builtin_keys(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("KEYS requires one argument", span, env));
+    }
+    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match dict {
+        Value::Dictionary(entries) => Ok(Value::List(
+            entries.iter().map(|(k, _)| key_to_value(k)).collect(),
+        )),
+        _ => Err(runtime_err(
+            "KEYS requires a dictionary argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_values(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 1 {
+        return Err(runtime_err("VALUES requires one argument", span, env));
+    }
+    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    match dict {
+        Value::Dictionary(entries) => {
+            Ok(Value::List(entries.into_iter().map(|(_, v)| v).collect()))
+        }
+        _ => Err(runtime_err(
+            "VALUES requires a dictionary argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_haskey(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("HASKEY requires two arguments", span, env));
+    }
+    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    match dict {
+        Value::Dictionary(entries) => match value_to_key(&key_val) {
+            // A value that could never be a key simply is not present, so the
+            // guard form `IF HASKEY(d, k)` stays usable for any k.
+            Err(_) => Ok(Value::Boolean(false)),
+            Ok(key) => Ok(Value::Boolean(dict_get(&entries, &key).is_some())),
+        },
+        _ => Err(runtime_err(
+            "HASKEY requires a dictionary argument",
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_getkey(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(runtime_err("GETKEY requires 2 or 3 arguments", span, env));
+    }
+    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
+    let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    let Value::Dictionary(entries) = dict else {
+        return Err(runtime_err(
+            "GETKEY requires a dictionary argument",
+            span,
+            env,
+        ));
+    };
+    // A value that could never be a key is simply absent: with a default that
+    // means the default, and without one the usual "Key not found" error.
+    let key = match value_to_key(&key_val) {
+        Ok(key) => key,
+        Err(_) if args.len() == 3 => return evaluate_node(&args[2], Rc::clone(env), debug),
+        Err(msg) => return Err(runtime_err(msg, span, env)),
+    };
+    match dict_get(&entries, &key) {
+        Some(value) => Ok(value.clone()),
+        None if args.len() == 3 => evaluate_node(&args[2], Rc::clone(env), debug),
+        None => Err(runtime_err(
+            format!("Key not found: {}", key_to_string(&key)),
+            span,
+            env,
+        )),
+    }
+}
+
+fn eval_builtin_setkey(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 3 {
+        return Err(runtime_err("SETKEY requires three arguments", span, env));
+    }
+    let AstNode::Identifier(name) = &args[0].node else {
+        return Err(runtime_err(
+            "SETKEY requires a dictionary variable",
+            span,
+            env,
+        ));
+    };
+    let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    let new_val = evaluate_node(&args[2], Rc::clone(env), debug)?;
+    let current = env.borrow().get(name);
+    let Some(Value::Dictionary(mut entries)) = current else {
+        return Err(runtime_err(
+            format!("Variable {} is not a dictionary", name),
+            span,
+            env,
+        ));
+    };
+    let key = value_to_key(&key_val).map_err(|msg| runtime_err(msg, span, env))?;
+    dict_insert(&mut entries, key, new_val.clone());
+    env.borrow_mut()
+        .set(name.clone(), Value::Dictionary(entries));
+    Ok(new_val)
+}
+
+fn eval_builtin_removekey(
+    args: &[Spanned],
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> EvalResult {
+    if args.len() != 2 {
+        return Err(runtime_err("REMOVEKEY requires two arguments", span, env));
+    }
+    let AstNode::Identifier(name) = &args[0].node else {
+        return Err(runtime_err(
+            "REMOVEKEY requires a dictionary variable",
+            span,
+            env,
+        ));
+    };
+    let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
+    let current = env.borrow().get(name);
+    let Some(Value::Dictionary(entries)) = current else {
+        return Err(runtime_err(
+            format!("Variable {} is not a dictionary", name),
+            span,
+            env,
+        ));
+    };
+    dict_remove_entry(name, entries, &key_val, env, span)
+}
+
 fn eval_single_num_fn(
     args: &[Spanned],
     env: &Rc<RefCell<Environment>>,
@@ -2145,10 +2504,59 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
             mixed_compare(*a, op, bigint_to_f64(b))
         }
 
+        // List equality, so that a comparison behaves the same hoisted out of a
+        // dictionary as it does inside one.
+        (Value::List(_), BinaryOperator::Eq, Value::List(_)) => {
+            Ok(Value::Boolean(values_equal(left, right)))
+        }
+        (Value::List(_), BinaryOperator::NotEq, Value::List(_)) => {
+            Ok(Value::Boolean(!values_equal(left, right)))
+        }
+
+        // Dictionary equality (order-insensitive) and merge
+        (Value::Dictionary(_), BinaryOperator::Eq, Value::Dictionary(_)) => {
+            Ok(Value::Boolean(values_equal(left, right)))
+        }
+        (Value::Dictionary(_), BinaryOperator::NotEq, Value::Dictionary(_)) => {
+            Ok(Value::Boolean(!values_equal(left, right)))
+        }
+        (Value::Dictionary(a), BinaryOperator::Add, Value::Dictionary(b)) => {
+            let mut result = a.clone();
+            for (key, value) in b {
+                dict_insert(&mut result, key.clone(), value.clone());
+            }
+            Ok(Value::Dictionary(result))
+        }
+
         _ => Err(format!(
             "Invalid operation: {:?} {:?} {:?}",
             left, op, right
         )),
+    }
+}
+
+/// Deep, structural equality. Dictionaries compare order-insensitively; NaN is
+/// never equal to anything, mirroring the binary-operator rules above.
+fn values_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::NaN, _) | (_, Value::NaN) => false,
+        (Value::Integer(a), Value::Integer(b)) => a == b,
+        (Value::Float(a), Value::Float(b)) => a == b,
+        (Value::Integer(a), Value::Float(b)) => bigint_to_f64(a) == *b,
+        (Value::Float(a), Value::Integer(b)) => *a == bigint_to_f64(b),
+        (Value::String(a), Value::String(b)) => a == b,
+        (Value::Boolean(a), Value::Boolean(b)) => a == b,
+        (Value::List(a), Value::List(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| values_equal(x, y))
+        }
+        (Value::Dictionary(a), Value::Dictionary(b)) => {
+            a.len() == b.len()
+                && a.iter().all(|(key, value)| {
+                    dict_get(b, key).is_some_and(|other| values_equal(value, other))
+                })
+        }
+        (Value::Null, Value::Null) | (Value::Unit, Value::Unit) => true,
+        _ => false,
     }
 }
 
@@ -2170,6 +2578,13 @@ fn value_to_string(value: &Value) -> String {
         Value::List(elements) => {
             let elements_str: Vec<String> = elements.iter().map(value_to_string).collect();
             format!("[{}]", elements_str.join(", "))
+        }
+        Value::Dictionary(entries) => {
+            let entries_str: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{}: {}", key_to_string(k), value_to_string(v)))
+                .collect();
+            format!("{{{}}}", entries_str.join(", "))
         }
         Value::Unit => "".to_string(),
         Value::Null => "NULL".to_string(),

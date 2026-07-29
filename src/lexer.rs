@@ -64,6 +64,7 @@ pub enum Token {
     OpenBracket,
     CloseBracket,
     Comma,
+    Colon,
     Indent,
     Dedent,
     Newline,
@@ -214,6 +215,7 @@ impl<'a> Lexer<'a> {
             '[' => Some((Token::OpenBracket, Span::new(token_start, self.pos))),
             ']' => Some((Token::CloseBracket, Span::new(token_start, self.pos))),
             ',' => Some((Token::Comma, Span::new(token_start, self.pos))),
+            ':' => Some((Token::Colon, Span::new(token_start, self.pos))),
 
             'r' if self.chars.peek() == Some(&'"') => {
                 self.chars.next();

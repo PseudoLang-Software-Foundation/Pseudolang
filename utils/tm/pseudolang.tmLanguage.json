@@ -51,6 +51,11 @@
             "name": "support.function.list.pseudolang"
         },
         {
+            "comment": "Dictionary functions",
+            "match": "\\b(DICTIONARY|GETKEY|HASKEY|KEYS|REMOVEKEY|SETKEY|VALUES)\\b",
+            "name": "support.function.dict.pseudolang"
+        },
+        {
             "comment": "String functions",
             "match": "\\b(CONCAT|CONTAINS|ENDSWITH|FIND|LOWERCASE|REPLACE|STARTSWITH|SUBSTRING|TRIM|UPPERCASE)\\b",
             "name": "support.function.string.pseudolang"
@@ -111,6 +116,11 @@
             "comment": "Block braces",
             "match": "[{}]",
             "name": "punctuation.section.block.pseudolang"
+        },
+        {
+            "comment": "Dictionary key-value separator",
+            "match": ":",
+            "name": "punctuation.separator.key-value.pseudolang"
         },
         {
             "comment": "Parentheses",

@@ -13,7 +13,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 # arrays (`declare -A`). Categories are therefore plain space-delimited strings
 # in `CAT_<name>` variables, looked up with indirect expansion. To add keywords,
 # just extend the relevant CAT_* list below.
-CATEGORIES="control constant operator math list string io other"
+CATEGORIES="control constant operator math list dict string io other"
 
 # Control
 CAT_control="IF ELSE REPEAT UNTIL TIMES FOR EACH IN RETURN PROCEDURE CLASS IMPORT TRY CATCH"
@@ -25,6 +25,8 @@ CAT_operator="MOD AND OR NOT"
 CAT_math="RANDOM ABS CEIL FLOOR POW SQRT SIN COS TAN ASIN ACOS ATAN EXP LOG NLOG LOGTEN LOGTWO GCD FACTORIAL DEGREES RADIANS MIN MAX HYPOT ROUND"
 # List
 CAT_list="LENGTH SORT APPEND REMOVE INSERT SPLIT RANGE"
+# Dictionary
+CAT_dict="DICTIONARY KEYS VALUES HASKEY GETKEY SETKEY REMOVEKEY"
 # String
 CAT_string="SUBSTRING CONCAT TRIM REPLACE UPPERCASE LOWERCASE CONTAINS FIND STARTSWITH ENDSWITH"
 # IO / misc
@@ -188,6 +190,17 @@ if [[ -n "$(bucket list)" ]]; then
 EOF
 fi
 
+# Dictionary functions
+if [[ -n "$(bucket dict)" ]]; then
+  cat >> "$OUTPUT" << EOF
+        {
+            "comment": "Dictionary functions",
+            "match": "\\\\b($(bucket dict))\\\\b",
+            "name": "support.function.dict.pseudolang"
+        },
+EOF
+fi
+
 # String functions
 if [[ -n "$(bucket string)" ]]; then
   cat >> "$OUTPUT" << EOF
@@ -274,6 +287,11 @@ cat >> "$OUTPUT" << 'EOF'
             "comment": "Block braces",
             "match": "[{}]",
             "name": "punctuation.section.block.pseudolang"
+        },
+        {
+            "comment": "Dictionary key-value separator",
+            "match": ":",
+            "name": "punctuation.separator.key-value.pseudolang"
         },
         {
             "comment": "Parentheses",

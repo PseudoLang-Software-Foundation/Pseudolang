@@ -7,6 +7,7 @@ mod arithmetic;
 mod basics;
 mod cli_args;
 mod control_flow;
+mod dictionaries;
 mod error_handling;
 mod lists;
 mod procedures;

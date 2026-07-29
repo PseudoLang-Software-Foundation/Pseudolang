@@ -216,7 +216,11 @@ fn test_error_format_repeat_count_not_integer() {
 #[test]
 fn test_error_format_foreach_on_integer() {
     let err = get_error("FOR EACH item IN 42 {\n    DISPLAY(item)\n}");
-    assert!(err.contains("FOR EACH requires list or string"), "{}", err);
+    assert!(
+        err.contains("FOR EACH requires list, string, or dictionary"),
+        "{}",
+        err
+    );
 }
 
 #[test]
@@ -585,7 +589,7 @@ fn test_concat_type_error() {
 fn test_length_type_error() {
     let err = get_error("DISPLAY(LENGTH(42))");
     assert!(
-        err.contains("LENGTH requires a list or string argument"),
+        err.contains("LENGTH requires a list, string, or dictionary argument"),
         "{}",
         err,
     );
@@ -607,4 +611,172 @@ fn test_not_boolean_error() {
 fn test_class_decl_not_implemented() {
     let err = get_error("CLASS Foo\n{\nPROCEDURE bar()\n{\nDISPLAY(1)\n}\n}");
     assert!(err.contains("not yet implemented"), "{}", err);
+}
+
+// ---------------------------------------------------------------------------
+// Dictionary errors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_dict_missing_key_read_error() {
+    let err = get_error("d <- {\"a\": 1}\nDISPLAY(d[\"b\"])");
+    assert!(err.contains("Key not found: b"), "{}", err);
+    assert!(err.contains("Line 2"), "Should report line 2: {}", err);
+}
+
+#[test]
+fn test_dict_illegal_key_type_error() {
+    let err = get_error("d <- {2.5: \"x\"}");
+    assert!(
+        err.contains("Dictionary keys must be strings, integers, or booleans"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_dict_illegal_key_type_on_lookup_error() {
+    let err = get_error("d <- {\"a\": 1}\nDISPLAY(d[[1, 2]])");
+    assert!(
+        err.contains("Dictionary keys must be strings, integers, or booleans"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_dict_literal_missing_colon_error() {
+    let err = get_error("d <- {\"a\" 1}");
+    assert!(err.contains("Expected ':' after dictionary key"), "{}", err);
+}
+
+#[test]
+fn test_dict_literal_missing_comma_error() {
+    let err = get_error("d <- {\"a\": 1 \"b\": 2}");
+    assert!(
+        err.contains("Expected comma between dictionary entries"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_dict_literal_at_statement_position_error() {
+    let err = get_error("{\"a\": 1}");
+    assert!(err.contains("Unexpected token in statement"), "{}", err);
+}
+
+#[test]
+fn test_keys_type_error() {
+    let err = get_error("DISPLAY(KEYS(42))");
+    assert!(
+        err.contains("KEYS requires a dictionary argument"),
+        "{}",
+        err
+    );
+}
+
+#[test]
+fn test_values_type_error() {
+    let err = get_error("DISPLAY(VALUES([1, 2]))");
+    assert!(
+        err.contains("VALUES requires a dictionary argument"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_haskey_type_error() {
+    let err = get_error("DISPLAY(HASKEY([1, 2], \"a\"))");
+    assert!(
+        err.contains("HASKEY requires a dictionary argument"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_getkey_missing_key_without_default_error() {
+    let err = get_error("d <- {\"a\": 1}\nDISPLAY(GETKEY(d, \"b\"))");
+    assert!(err.contains("Key not found: b"), "{}", err);
+}
+
+#[test]
+fn test_getkey_arity_error() {
+    let err = get_error("d <- {\"a\": 1}\nDISPLAY(GETKEY(d))");
+    assert!(err.contains("GETKEY requires 2 or 3 arguments"), "{}", err);
+}
+
+#[test]
+fn test_setkey_on_non_dictionary_error() {
+    let err = get_error("x <- 5\nSETKEY(x, \"a\", 1)");
+    assert!(err.contains("Variable x is not a dictionary"), "{}", err);
+}
+
+#[test]
+fn test_setkey_requires_variable_error() {
+    let err = get_error("DISPLAY(SETKEY({\"a\": 1}, \"b\", 2))");
+    assert!(
+        err.contains("SETKEY requires a dictionary variable"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_removekey_missing_key_error() {
+    let err = get_error("d <- {\"a\": 1}\nREMOVEKEY(d, \"b\")");
+    assert!(err.contains("Key not found: b"), "{}", err);
+}
+
+#[test]
+fn test_removekey_requires_variable_error() {
+    let err = get_error("REMOVEKEY([1, 2], 1)");
+    assert!(
+        err.contains("REMOVEKEY requires a dictionary variable"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_dictionary_builtin_takes_no_arguments_error() {
+    let err = get_error("d <- DICTIONARY(1)");
+    assert!(err.contains("DICTIONARY takes no arguments"), "{}", err);
+}
+
+#[test]
+fn test_dict_index_assignment_on_scalar_error() {
+    let err = get_error("x <- 5\nx[\"a\"] <- 1");
+    assert!(
+        err.contains("Variable x is not a list or dictionary"),
+        "{}",
+        err,
+    );
+}
+
+#[test]
+fn test_dict_ordering_comparison_error() {
+    let err = get_error("a <- {\"x\": 1}\nb <- {\"x\": 2}\nDISPLAY(a < b)");
+    assert!(err.contains("Invalid operation"), "{}", err);
+}
+
+#[test]
+fn test_dict_plus_non_dictionary_error() {
+    let err = get_error("DISPLAY({\"a\": 1} + \"text\")");
+    assert!(err.contains("Invalid operation"), "{}", err);
+}
+
+#[test]
+fn test_foreach_on_dictionary_is_allowed() {
+    assert_output(
+        "d <- {\"a\": 1, \"b\": 2}\nFOR EACH k IN d {\n    DISPLAY(k)\n}",
+        "a\nb",
+    );
+}
+
+#[test]
+fn test_length_on_dictionary_is_allowed() {
+    assert_output("DISPLAY(LENGTH({\"a\": 1, \"b\": 2}))", "2");
 }
