@@ -28,9 +28,9 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
-          manualChunks: {
-            monaco: ["monaco-editor"],
-            xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-webgl"],
+          manualChunks(id) {
+            if (id.includes("node_modules/monaco-editor")) return "monaco";
+            if (id.includes("node_modules/@xterm/")) return "xterm";
           },
         },
       },

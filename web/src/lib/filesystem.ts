@@ -26,7 +26,7 @@ export class VirtualFS {
   cd(path: string): string | null {
     const resolved = this.resolve(path);
     const entry = this.entries.get(resolved);
-    if (!entry || entry.type !== "dir") return `cd: ${path}: No such directory`;
+    if (entry?.type !== "dir") return `cd: ${path}: No such directory`;
     this._cwd = resolved;
     return null;
   }
@@ -55,14 +55,14 @@ export class VirtualFS {
   readFile(path: string): string | null {
     const resolved = this.resolve(path);
     const entry = this.entries.get(resolved);
-    if (!entry || entry.type !== "file") return null;
+    if (entry?.type !== "file") return null;
     return decoder.decode(entry.content);
   }
 
   readFileBytes(path: string): Uint8Array | null {
     const resolved = this.resolve(path);
     const entry = this.entries.get(resolved);
-    if (!entry || entry.type !== "file" || !entry.content) return null;
+    if (entry?.type !== "file" || !entry.content) return null;
     return entry.content;
   }
 

@@ -2,7 +2,7 @@ use crate::error::{PSLError, Span, StackFrame};
 use crate::parser::{AstNode, BinaryOperator, Spanned, UnaryOperator};
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive, Zero};
-use rand::Rng;
+use rand::RngExt;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};

@@ -1,5 +1,5 @@
 import { shikiToMonaco } from "@shikijs/monaco";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import * as monaco from "monaco-editor/editor/editor.api";
 import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import darkPlus from "shiki/themes/dark-plus.mjs";
