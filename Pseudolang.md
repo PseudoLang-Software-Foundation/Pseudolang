@@ -45,6 +45,10 @@ When operating on two integers, the result will always be an integer with the fr
 `a MOD b`
 
 The arithmetic operators +, -, *, /, and MOD are used to perform arithmetic on a and b.
+MOD accepts the same operand types as the other arithmetic operators: two integers
+give an integer remainder, and any combination involving a float (`Float MOD Float`,
+`Int MOD Float`, `Float MOD Int`) gives a floating-point remainder. A modulus of zero
+is an error.
 
 `RANDOM(a, b)`
 
@@ -166,6 +170,10 @@ Evaluates to true if both a and b are true; otherwise evaluates to false.
 
 Evaluates to true if a is true or if b is true or if both a and b are true; otherwise evaluates to false.
 
+Both AND and OR require Boolean operands on *both* sides; a non-Boolean operand is a
+runtime error, for example `1 AND TRUE`. They still short-circuit, so `FALSE AND b`
+and `TRUE OR b` never evaluate `b` at all.
+
 `NOT a`
 
 Evaluates to true if a is false; otherwise evaluates to false.
@@ -250,6 +258,10 @@ Removes the item at index i in aList and shifts to the left any values at indice
 `LENGTH(aList)`
 
 Evaluates to the number of elements in aList (1 through length).
+
+`LENGTH` also accepts a string, where it evaluates to the number of **characters**
+in that string. For text outside ASCII this is not the same as the number of bytes:
+`LENGTH("héllo")` is 5, and `LENGTH("日本語")` is 3.
 
 `SORT(aList)`
 
@@ -431,6 +443,9 @@ DISPLAY(x) COMMENT Displays 10 (outer x unchanged)
 
 `SUBSTRING("abcd", start, end)`
 Returns a string of characters from index `start` to index `end` of the given string
+(both inclusive, 1-based). `start` and `end` are character positions, not byte
+offsets, so `SUBSTRING("héllo", 1, 2)` is `"hé"`. Indices outside the string, or an
+`end` before the `start`, are a runtime error.
 
 `CONCAT("ab", "cd")`
 Returns a single string with the two given strings combined
@@ -442,6 +457,8 @@ Returns TRUE if the string contains the given text, FALSE otherwise.
 `FIND(string, text)`
 
 Returns the index position of the first occurrence of text in string (1-based indexing). Returns -1 if text is not found.
+The position is a character position, so it can be handed straight back to `string[i]`
+or `SUBSTRING` even when the string contains non-ASCII text.
 
 `SPLIT(string, delimiter)`
 
@@ -483,7 +500,9 @@ Float (64 bit)
 
 `"a"`
 
-String (64 bit)
+String. Strings are UTF-8 text and are indexed by character, not by byte: `LENGTH`,
+`s[i]`, `SUBSTRING` and `FIND` all agree on the same 1-based character positions, so
+a position produced by one can be handed to another regardless of the alphabet used.
 
 `TRUE` or `FALSE`
 
@@ -637,3 +656,8 @@ DISPLAY(GETARG("verbose"))          COMMENT returns "true" (boolean flags)
 ## Limitations
 
 Since a lot of the syntax is text like COMMENT or TRUE, you may not set variables as such, and the interpreter will try to raise an error if it occurs.
+
+Expressions and blocks may not nest more than 128 levels deep. Each nested `(`, `[`,
+call argument or `{` block counts as one level; exceeding the limit is reported as
+`Maximum nesting depth exceeded`. This is far more nesting than a readable program
+needs, and it keeps pathological input from exhausting the interpreter's stack.

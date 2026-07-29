@@ -379,3 +379,24 @@ fn test_sort_strings() {
 fn test_sort_duplicates() {
     assert_output("DISPLAY(SORT([3, 1, 2, 1, 3]))", "[1, 1, 2, 3, 3]");
 }
+
+#[test]
+fn test_sort_mixed_types_does_not_crash() {
+    // SORT's comparator has to be a TOTAL order. One that called unrelated
+    // kinds `Equal` was not transitive -- 1 < 2 while 1 == "x" and 2 == "x" --
+    // and Rust's sort detected that and panicked, aborting the interpreter on
+    // a list a user is entitled to write. Mixed lists now group by kind.
+    assert_output(
+        "DISPLAY(SORT([2, \"b\", TRUE, 1, \"a\", FALSE]))",
+        "[1, 2, a, b, false, true]",
+    );
+    assert_output(
+        "DISPLAY(SORT([\"a\", [1], TRUE, 2.5, 1, {\"z\": 1}]))",
+        "[1, 2.5, a, true, [1], {z: 1}]",
+    );
+    // The documented cases are unchanged.
+    assert_output("DISPLAY(SORT([3, 1, 2]))", "[1, 2, 3]");
+    assert_output("DISPLAY(SORT([2.5, 1, 3]))", "[1, 2.5, 3]");
+    assert_output("DISPLAY(SORT([\"b\", \"a\", \"c\"]))", "[a, b, c]");
+    assert_output("DISPLAY(SORT([]))", "[]");
+}

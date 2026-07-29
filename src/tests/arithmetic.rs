@@ -316,6 +316,27 @@ fn test_modulo_by_zero_error() {
     assert!(err.contains("Modulo by zero"), "{}", err);
 }
 
+/// The numeric tower has to be consistent: `Int MOD Float` and `Float MOD Int`
+/// always worked, but `Float MOD Float` fell through to the catch-all arm and
+/// reported "Invalid operation" instead of computing a remainder.
+#[test]
+fn test_float_modulo() {
+    assert_output("DISPLAY(7.5 MOD 2.0)", "1.5");
+    assert_output("DISPLAY(7.5 MOD 2)", "1.5");
+    assert_output("DISPLAY(7 MOD 2.5)", "2");
+    assert_output("DISPLAY(10.0 MOD 2.5)", "0");
+    assert_output("DISPLAY(-7.5 MOD 2.0)", "-1.5");
+    assert_output("DISPLAY(1.5 MOD 0.5)", "0");
+}
+
+#[test]
+fn test_float_modulo_by_zero_error() {
+    let err = get_error("DISPLAY(7.5 MOD 0.0)");
+    assert!(err.contains("Modulo by zero"), "{}", err);
+    let err = get_error("DISPLAY(7.5 MOD 0)");
+    assert!(err.contains("Modulo by zero"), "{}", err);
+}
+
 #[test]
 fn test_unary_negation() {
     assert_output("DISPLAY(-5)", "-5");

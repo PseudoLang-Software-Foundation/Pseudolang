@@ -14,8 +14,141 @@ impl Spanned {
     }
 }
 
+/// Tear the AST down iteratively instead of recursively.
+///
+/// The derived drop glue for `Spanned` recurses once per level of the tree, so a
+/// deep AST aborts the process (SIGABRT, "stack overflow") when it is released —
+/// *after* the program has already run correctly. The parser's
+/// [`MAX_NESTING_DEPTH`] guard cannot prevent this, because a left-associative
+/// chain like `1+1+...+1` is built by a *loop* in `parse_term`, so parse
+/// recursion stays flat while the tree it produces gets arbitrarily deep.
+///
+/// So `drop` moves the children into an explicit worklist and releases the nodes
+/// one at a time. Every node is pushed and popped at most once, so this is
+/// linear, and a node is only ever released once its own children have been
+/// taken (its `node` is [`AstNode::Null`]) or it never had any — either way the
+/// inner `drop` bottoms out immediately instead of recursing.
+impl Drop for Spanned {
+    fn drop(&mut self) {
+        // Fast path for leaves, which are the vast majority of any AST: nothing
+        // to move, so let the ordinary drop glue release `self.node`.
+        if self.node.is_childless() {
+            return;
+        }
+        // `Vec::new` does not allocate, and only nodes that actually have
+        // children are ever pushed, so tearing down one tree costs one Vec.
+        let mut worklist: Vec<Spanned> = Vec::new();
+        take_children(&mut self.node, &mut worklist);
+        while let Some(mut child) = worklist.pop() {
+            take_children(&mut child.node, &mut worklist);
+            // `child` is released here holding an empty `AstNode::Null`.
+        }
+    }
+}
+
+/// Move every direct `Spanned` child of `node` into `out`, leaving `node` empty.
+///
+/// Children that are themselves leaves are released on the spot rather than
+/// queued: that keeps the worklist proportional to the number of *interior*
+/// nodes and keeps a wide literal such as `[1, 2, ..., 100000]` as cheap to drop
+/// as it was before.
+///
+/// The match is deliberately exhaustive: a new [`AstNode`] variant that owns a
+/// `Spanned` must be listed here, otherwise it would silently go back to being
+/// dropped recursively.
+fn take_children(node: &mut AstNode, out: &mut Vec<Spanned>) {
+    fn push(out: &mut Vec<Spanned>, child: Spanned) {
+        if !child.node.is_childless() {
+            out.push(child);
+        }
+        // A leaf child is dropped right here, hitting the fast path above.
+    }
+
+    fn push_all(out: &mut Vec<Spanned>, children: impl IntoIterator<Item = Spanned>) {
+        for child in children {
+            push(out, child);
+        }
+    }
+
+    match std::mem::replace(node, AstNode::Null) {
+        AstNode::List(items)
+        | AstNode::Block(items)
+        | AstNode::Program(items)
+        | AstNode::ProcedureCall(_, items)
+        | AstNode::FormattedString(_, items) => push_all(out, items),
+
+        AstNode::Dictionary(entries) => {
+            for (key, value) in entries {
+                push(out, key);
+                push(out, value);
+            }
+        }
+
+        AstNode::UnaryOp(_, a)
+        | AstNode::Return(a)
+        | AstNode::DisplayInline(a)
+        | AstNode::Length(a)
+        | AstNode::ToString(a)
+        | AstNode::ToNum(a)
+        | AstNode::Sort(a)
+        | AstNode::ClassDecl(_, a)
+        | AstNode::ProcedureDecl(_, _, a)
+        | AstNode::Eval(a) => push(out, *a),
+
+        AstNode::Display(a) | AstNode::Input(a) => push_all(out, a.map(|b| *b)),
+
+        AstNode::Assignment(a, b)
+        | AstNode::ListAccess(a, b)
+        | AstNode::BinaryOp(a, _, b)
+        | AstNode::RepeatTimes(a, b)
+        | AstNode::RepeatUntil(a, b)
+        | AstNode::ForEach(_, a, b)
+        | AstNode::Random(a, b)
+        | AstNode::Append(a, b)
+        | AstNode::Remove(a, b)
+        | AstNode::Concat(a, b) => {
+            push(out, *a);
+            push(out, *b);
+        }
+
+        AstNode::TryCatch {
+            try_block: a,
+            error_var: _,
+            catch_block: b,
+        } => {
+            push(out, *a);
+            push(out, *b);
+        }
+
+        AstNode::ListAssignment(a, b, c)
+        | AstNode::Insert(a, b, c)
+        | AstNode::Substring(a, b, c) => {
+            push(out, *a);
+            push(out, *b);
+            push(out, *c);
+        }
+
+        AstNode::If(a, b, c) => {
+            push(out, *a);
+            push(out, *b);
+            push_all(out, c.map(|d| *d));
+        }
+
+        // Leaves: nothing recursive to hand over.
+        AstNode::Integer(_)
+        | AstNode::Float(_)
+        | AstNode::String(_)
+        | AstNode::Boolean(_)
+        | AstNode::Null
+        | AstNode::NaN
+        | AstNode::Identifier(_)
+        | AstNode::Comment
+        | AstNode::Import(_)
+        | AstNode::RawString(_) => {}
+    }
+}
+
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum AstNode {
     Integer(BigInt),
     Float(f64),
@@ -30,10 +163,6 @@ pub enum AstNode {
     Assignment(Box<Spanned>, Box<Spanned>),
     ListAccess(Box<Spanned>, Box<Spanned>),
     ListAssignment(Box<Spanned>, Box<Spanned>, Box<Spanned>),
-
-    ListInsert(Box<Spanned>, Box<Spanned>, Box<Spanned>),
-    ListAppend(Box<Spanned>, Box<Spanned>),
-    ListRemove(Box<Spanned>, Box<Spanned>),
 
     BinaryOp(Box<Spanned>, BinaryOperator, Box<Spanned>),
     UnaryOp(UnaryOperator, Box<Spanned>),
@@ -65,7 +194,7 @@ pub enum AstNode {
 
     Block(Vec<Spanned>),
     Program(Vec<Spanned>),
-    Comment(String),
+    Comment,
     Import(String),
 
     RawString(String),
@@ -78,8 +207,30 @@ pub enum AstNode {
     Eval(Box<Spanned>),
 }
 
+impl AstNode {
+    /// True for the variants that own no [`Spanned`] at all.
+    ///
+    /// Used by [`Drop for Spanned`](Spanned) to skip the iterative teardown
+    /// entirely for leaf nodes. Kept in sync with the leaf arm of
+    /// `take_children`.
+    fn is_childless(&self) -> bool {
+        matches!(
+            self,
+            AstNode::Integer(_)
+                | AstNode::Float(_)
+                | AstNode::String(_)
+                | AstNode::Boolean(_)
+                | AstNode::Null
+                | AstNode::NaN
+                | AstNode::Identifier(_)
+                | AstNode::Comment
+                | AstNode::Import(_)
+                | AstNode::RawString(_)
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -122,20 +273,56 @@ impl BinaryOperator {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum UnaryOperator {
     Not,
     Neg,
 }
 
+/// Hard cap on how deeply expressions and blocks may nest.
+///
+/// The parser is recursive descent, so every nested `(`, `[`, call argument or
+/// `{` block costs a stack frame. Without a limit a deeply nested source file
+/// exhausts the stack and the process dies with SIGABRT instead of reporting an
+/// error. The real ceiling is build- and host-dependent (~2400 levels for a
+/// release build on an 8 MiB main thread, but only ~375 for a debug build and
+/// far less inside a 1 MiB WebAssembly stack), so the limit is set well below
+/// the smallest of those while still being far more nesting than any real
+/// PseudoLang program needs.
+pub const MAX_NESTING_DEPTH: usize = 128;
+
 pub struct Parser {
     tokens: Vec<(Token, Span)>,
     current: usize,
+    /// Current recursion depth of `parse_expression` / `parse_block`.
+    depth: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<(Token, Span)>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser {
+            tokens,
+            current: 0,
+            depth: 0,
+        }
+    }
+
+    /// Run `body` one nesting level deeper, refusing to recurse past
+    /// [`MAX_NESTING_DEPTH`] so that runaway nesting produces a `PSLError`
+    /// rather than a stack overflow.
+    fn nested<T>(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> Result<T, PSLError>,
+    ) -> Result<T, PSLError> {
+        if self.depth >= MAX_NESTING_DEPTH {
+            return Err(self.create_error(&format!(
+                "Maximum nesting depth exceeded (limit: {})",
+                MAX_NESTING_DEPTH
+            )));
+        }
+        self.depth += 1;
+        let result = body(self);
+        self.depth -= 1;
+        result
     }
 
     fn debug_print(debug: bool, message: &str) {
@@ -213,6 +400,15 @@ impl Parser {
 
     // skipcq: RS-R1000
     fn parse_statement(&mut self, debug: bool) -> Result<Spanned, PSLError> {
+        // Leading newlines are skipped in a loop. This used to be a tail call
+        // back into `parse_statement`, which rustc is not obliged to turn into a
+        // jump, so a file with a long enough run of blank lines overflowed the
+        // stack. A blank line is not "nesting", so this must not cost depth.
+        while matches!(self.peek(), Some(Token::Newline)) {
+            Self::debug_print(debug, "Found newline, skipping");
+            self.advance();
+        }
+
         Self::debug_print(
             debug,
             &format!("Parsing statement at position {}", self.current),
@@ -382,11 +578,6 @@ impl Parser {
                 Self::debug_print(debug, "End of input reached");
                 Ok(Spanned::new(AstNode::Block(Vec::new()), Span::default()))
             }
-            Some(Token::Newline) => {
-                Self::debug_print(debug, "Found newline, skipping");
-                self.advance();
-                self.parse_statement(debug)
-            }
             Some(Token::CloseBrace) => {
                 Ok(Spanned::new(AstNode::Block(Vec::new()), self.peek_span()))
             }
@@ -513,7 +704,13 @@ impl Parser {
         )
     }
 
+    /// Depth-guarded entry point for expression parsing; every nested
+    /// sub-expression goes through here so runaway nesting is caught.
     pub fn parse_expression(&mut self, debug: bool) -> Result<Spanned, PSLError> {
+        self.nested(|p| p.parse_expression_inner(debug))
+    }
+
+    fn parse_expression_inner(&mut self, debug: bool) -> Result<Spanned, PSLError> {
         let start = self.peek_span().start;
         if self.match_token(&Token::Sort) {
             if !self.match_token(&Token::OpenParen) {
@@ -680,15 +877,18 @@ impl Parser {
         let start = self.peek_span().start;
         if let Some(token) = self.peek() {
             match token {
+                // Both prefix operators recurse into `parse_unary`, so they must
+                // go through `nested`: without it `NOT NOT NOT ...` (or `- - -
+                // ...`) grows the stack without ever moving the depth counter.
                 Token::Not => {
                     self.advance();
-                    let expr = self.parse_unary(debug)?;
+                    let expr = self.nested(|p| p.parse_unary(debug))?;
                     Ok(self
                         .spanned_from(AstNode::UnaryOp(UnaryOperator::Not, Box::new(expr)), start))
                 }
                 Token::Minus => {
                     self.advance();
-                    let expr = self.parse_unary(debug)?;
+                    let expr = self.nested(|p| p.parse_unary(debug))?;
                     Ok(self
                         .spanned_from(AstNode::UnaryOp(UnaryOperator::Neg, Box::new(expr)), start))
                 }
@@ -787,7 +987,11 @@ impl Parser {
                 for var in vars {
                     let mut var_lexer = Lexer::new(&var);
                     let var_tokens = var_lexer.tokenize();
+                    // Each interpolation slot gets its own Parser, so it must
+                    // inherit the current depth: otherwise nesting restarts at
+                    // zero every level and `f"{f"{...}"}"` escapes the guard.
                     let mut var_parser = Parser::new(var_tokens);
+                    var_parser.depth = self.depth + 1;
                     let mut expr = var_parser.parse_expression(debug)?;
                     expr.span = fs_span;
                     expressions.push(expr);
@@ -901,6 +1105,10 @@ impl Parser {
     }
 
     fn parse_block(&mut self, debug: bool) -> Result<Spanned, PSLError> {
+        self.nested(|p| p.parse_block_inner(debug))
+    }
+
+    fn parse_block_inner(&mut self, debug: bool) -> Result<Spanned, PSLError> {
         Self::debug_print(
             debug,
             &format!("Parsing block, current token: {:?}", self.peek()),
@@ -1011,7 +1219,7 @@ impl Parser {
         let start = self.peek_span().start;
         self.advance();
         match self.advance() {
-            Some(Token::String(text)) => Ok(self.spanned_from(AstNode::Comment(text), start)),
+            Some(Token::String(_)) => Ok(self.spanned_from(AstNode::Comment, start)),
             _ => Err(self.create_error("Expected string after COMMENT")),
         }
     }
@@ -1022,21 +1230,6 @@ impl Parser {
         match self.advance() {
             Some(Token::String(path)) => Ok(self.spanned_from(AstNode::Import(path), start)),
             _ => Err(self.create_error("Expected string after IMPORT")),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn synchronize(&mut self) {
-        while let Some(token) = self.peek() {
-            match token {
-                Token::Newline => {
-                    self.advance();
-                    return;
-                }
-                _ => {
-                    self.advance();
-                }
-            }
         }
     }
 
@@ -1142,7 +1335,10 @@ impl Parser {
             }
 
             if self.peek() == Some(&Token::If) {
-                Some(Box::new(self.parse_if(debug)?))
+                // `ELSE IF` recurses into `parse_if` *after* `parse_block` has
+                // already returned and given its depth back, so an `ELSE IF`
+                // chain would otherwise accumulate stack frames at depth 0.
+                Some(Box::new(self.nested(|p| p.parse_if(debug))?))
             } else {
                 Some(Box::new(self.parse_block(debug)?))
             }

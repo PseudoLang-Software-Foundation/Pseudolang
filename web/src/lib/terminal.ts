@@ -13,6 +13,12 @@ let lastPartialLine = "";
 
 const PROMPT = "\x1b[32mpseudolang>\x1b[0m ";
 
+// Cap on the retained tail of a newline-less output line. The tail is only ever
+// replayed as the prompt for the next stdin read, so a couple of terminal lines
+// is all that can matter — without a cap, a program that writes megabytes
+// before its first newline grows this string without bound.
+const MAX_PARTIAL_LINE = 4096;
+
 export function initTerminal(
   container: HTMLElement,
   ctx: ShellContext,
@@ -94,6 +100,10 @@ export function injectCommand(cmd: string): void {
   if (!commandResolve) return;
   const resolve = commandResolve;
   commandResolve = null;
+  // The pending `read()` has already drawn PROMPT (plus anything typed so far)
+  // on the current row. Erase that row before echoing, or the injected command
+  // renders as "pseudolang> pseudolang> run".
+  rl?.write("\r\x1b[J");
   rl?.println(`${PROMPT}${cmd}`);
   resolve(cmd);
 }
@@ -111,6 +121,9 @@ export function writeToTerminal(text: string): void {
     lastPartialLine = text.slice(lastNewline + 1);
   } else {
     lastPartialLine += text;
+  }
+  if (lastPartialLine.length > MAX_PARTIAL_LINE) {
+    lastPartialLine = lastPartialLine.slice(-MAX_PARTIAL_LINE);
   }
   rl?.write(text);
 }

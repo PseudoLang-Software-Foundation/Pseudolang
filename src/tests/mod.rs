@@ -3,6 +3,7 @@ use crate::lexer::Lexer;
 use crate::parser;
 
 mod algorithms;
+mod aliasing;
 mod arithmetic;
 mod basics;
 mod cli_args;
@@ -10,9 +11,12 @@ mod control_flow;
 mod dictionaries;
 mod error_handling;
 mod lists;
+mod parsing;
 mod procedures;
+mod recursion_limits;
 mod stdlib;
 mod strings;
+mod unicode;
 
 pub fn run_test(input: &str) -> Result<String, String> {
     let mut lexer = Lexer::new(input);

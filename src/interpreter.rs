@@ -13,16 +13,15 @@ use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 enum Value {
     Integer(BigInt),
     Float(f64),
     String(String),
     Boolean(bool),
     List(Vec<Value>),
-    /// Insertion-ordered association vector. Overwriting an existing key keeps
-    /// its original position; a new key is appended.
-    Dictionary(Vec<(DictKey, Value)>),
+    /// Insertion-ordered dictionary. Overwriting an existing key keeps its
+    /// original position; a new key is appended. See [`Dict`].
+    Dictionary(Dict),
     Unit,
     Null,
     NaN,
@@ -62,17 +61,231 @@ fn key_to_string(key: &DictKey) -> String {
     }
 }
 
-/// Insert or overwrite a key, preserving insertion order.
-fn dict_insert(entries: &mut Vec<(DictKey, Value)>, key: DictKey, value: Value) {
-    if let Some(slot) = entries.iter_mut().find(|(k, _)| *k == key) {
-        slot.1 = value;
-    } else {
-        entries.push((key, value));
+/// Dictionaries at or below this many entries are searched by linear scan, and
+/// only larger ones pay for the hash index.
+///
+/// Hashing a `DictKey` costs more than a handful of `==` comparisons: an
+/// integer key is a `BigInt`, so hashing it is measurably dearer than comparing
+/// it. Timing a hot 3-lookups-per-iteration loop against dictionaries of 9, 16,
+/// 24, 32, 48 and 64 integer keys put the break-even at ~32 entries -- below it
+/// the index cost up to 18%, above it the scan cost 13% at 48 keys and 35% at
+/// 64, growing without bound from there. String keys break even earlier but are
+/// flat either way in this range, so the integer crossover sets the limit.
+const DICT_LINEAR_SCAN_LIMIT: usize = 32;
+
+/// The body of a dictionary.
+///
+/// `entries` is the authoritative, insertion-ordered association vector: every
+/// observable ordering (DISPLAY, KEYS, VALUES, FOR EACH) reads it directly, so
+/// overwriting a key keeps its original position and a new key is appended.
+/// `index` is a pure accelerator mapping each key to its position in `entries`;
+/// it is absent while the dictionary is small, and once built every mutation
+/// below carries it along, so it is never consulted in a stale state. A
+/// dictionary that shrinks back under the limit simply keeps its index: it is
+/// still correct, and rebuilding on the way down would cost more than it saves.
+#[derive(Debug, Clone, Default)]
+struct DictInner {
+    entries: Vec<(DictKey, Value)>,
+    index: Option<HashMap<DictKey, usize>>,
+}
+
+impl DictInner {
+    /// Position of `key` in `entries`: one hash probe when indexed, a linear
+    /// scan while the dictionary is still small.
+    fn position(&self, key: &DictKey) -> Option<usize> {
+        match &self.index {
+            Some(index) => index.get(key).copied(),
+            None => self.entries.iter().position(|(k, _)| k == key),
+        }
+    }
+
+    /// Insert or overwrite a key, preserving insertion order.
+    fn insert(&mut self, key: DictKey, value: Value) {
+        if let Some(pos) = self.position(&key) {
+            self.entries[pos].1 = value;
+            return;
+        }
+        let pos = self.entries.len();
+        match &mut self.index {
+            Some(index) => {
+                index.insert(key.clone(), pos);
+                self.entries.push((key, value));
+            }
+            None => {
+                self.entries.push((key, value));
+                if self.entries.len() > DICT_LINEAR_SCAN_LIMIT {
+                    self.build_index();
+                }
+            }
+        }
+    }
+
+    /// Remove a key, keeping the surviving entries in insertion order.
+    fn remove(&mut self, key: &DictKey) -> Option<Value> {
+        let pos = self.position(key)?;
+        let (_, removed) = self.entries.remove(pos);
+        // Every entry after `pos` shifted down one slot, so the index has to be
+        // repaired; `Vec::remove` is already O(n), so this costs nothing extra.
+        if let Some(index) = &mut self.index {
+            index.remove(key);
+            for slot in index.values_mut() {
+                if *slot > pos {
+                    *slot -= 1;
+                }
+            }
+        }
+        Some(removed)
+    }
+
+    fn build_index(&mut self) {
+        let mut index = HashMap::with_capacity(self.entries.len());
+        for (pos, (key, _)) in self.entries.iter().enumerate() {
+            index.insert(key.clone(), pos);
+        }
+        self.index = Some(index);
     }
 }
 
-fn dict_get<'a>(entries: &'a [(DictKey, Value)], key: &DictKey) -> Option<&'a Value> {
-    entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+/// Insertion-ordered dictionary with average O(1) lookup and O(1) copy.
+///
+/// The body sits behind an `Rc` and is copied on write, which is exactly
+/// PseudoLang's copy-on-assign value semantics: `b <- a` shares the body and
+/// the first mutation of either side forks it, so neither can observe the
+/// other's writes. Sharing only makes copying cheap -- no caller can reach the
+/// body except through the methods here, all of which take `&mut self` before
+/// touching it.
+#[derive(Clone, Default)]
+struct Dict {
+    inner: Rc<DictInner>,
+}
+
+/// Printed as the bare association list a dictionary used to be, so the `{:?}`
+/// of a `Value` -- which reaches user-visible text, e.g. the "Invalid operation"
+/// message -- is unchanged by the wrapper types.
+impl std::fmt::Debug for Dict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.entries.fmt(f)
+    }
+}
+
+impl Dict {
+    fn new() -> Self {
+        Dict::default()
+    }
+
+    fn len(&self) -> usize {
+        self.inner.entries.len()
+    }
+
+    fn get(&self, key: &DictKey) -> Option<&Value> {
+        self.inner
+            .position(key)
+            .map(|pos| &self.inner.entries[pos].1)
+    }
+
+    /// The value stored at `key`, borrowed for mutation. Forks a shared body,
+    /// so a nested write through this reference cannot leak into a copy.
+    fn get_mut(&mut self, key: &DictKey) -> Option<&mut Value> {
+        let inner = Rc::make_mut(&mut self.inner);
+        let pos = inner.position(key)?;
+        Some(&mut inner.entries[pos].1)
+    }
+
+    fn contains_key(&self, key: &DictKey) -> bool {
+        self.inner.position(key).is_some()
+    }
+
+    fn insert(&mut self, key: DictKey, value: Value) {
+        Rc::make_mut(&mut self.inner).insert(key, value);
+    }
+
+    fn remove(&mut self, key: &DictKey) -> Option<Value> {
+        Rc::make_mut(&mut self.inner).remove(key)
+    }
+
+    fn iter(&self) -> std::slice::Iter<'_, (DictKey, Value)> {
+        self.inner.entries.iter()
+    }
+
+    fn keys(&self) -> impl Iterator<Item = &DictKey> {
+        self.inner.entries.iter().map(|(k, _)| k)
+    }
+
+    fn values(&self) -> impl Iterator<Item = &Value> {
+        self.inner.entries.iter().map(|(_, v)| v)
+    }
+}
+
+/// Number of characters in `s`.
+///
+/// Every string position in PseudoLang is a character position, never a byte
+/// offset: `LENGTH`, `s[i]`, `SUBSTRING` and `FIND` all agree, so an index
+/// produced by one can be handed straight to another even when the string
+/// holds non-ASCII text. Pure-ASCII strings take the O(1) byte-length path,
+/// where the two counts coincide.
+#[inline]
+fn str_char_len(s: &str) -> usize {
+    if s.is_ascii() {
+        s.len()
+    } else {
+        s.chars().count()
+    }
+}
+
+/// The inclusive character range `start..=end` of `s`, or `None` when the range
+/// runs off the end of the string or is reversed.
+fn char_range(s: &str, start: usize, end: usize) -> Option<&str> {
+    if end < start {
+        return None;
+    }
+    // A string never has more characters than bytes, so an `end` at or past
+    // `s.len()` is out of range whatever the encoding. This also bounds `end`
+    // below `usize::MAX`, so the `end + 1` further down cannot overflow.
+    if end >= s.len() {
+        return None;
+    }
+    if s.is_ascii() {
+        // Byte offsets and character offsets coincide, and every byte is a
+        // char boundary, so the slice is safe.
+        return Some(&s[start..=end]);
+    }
+    let mut begin = None;
+    let mut stop = None;
+    let mut seen = 0usize;
+    for (nth, (byte_idx, _)) in s.char_indices().enumerate() {
+        seen = nth + 1;
+        if nth == start {
+            begin = Some(byte_idx);
+        }
+        if nth == end + 1 {
+            stop = Some(byte_idx);
+            break;
+        }
+    }
+    match (begin, stop) {
+        (Some(begin), Some(stop)) => Some(&s[begin..stop]),
+        // The range ends on the last character, so it runs to the end.
+        (Some(begin), None) if end < seen => Some(&s[begin..]),
+        _ => None,
+    }
+}
+
+/// LENGTH of the value kinds that have one, without copying it.
+fn container_len(value: &Value) -> Option<usize> {
+    match value {
+        Value::List(elements) => Some(elements.len()),
+        Value::String(s) => Some(str_char_len(s)),
+        Value::Dictionary(entries) => Some(entries.len()),
+        _ => None,
+    }
+}
+
+/// What kind of container a variable holds, probed without copying it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ContainerKind {
+    List,
+    Dictionary,
+    Other,
 }
 
 enum Interruption {
@@ -90,25 +303,267 @@ fn runtime_err(msg: impl Into<String>, span: Span, env: &Rc<RefCell<Environment>
     })
 }
 
+/// Rank of a value's kind for [`sort_cmp`]. Numbers sort before strings, then
+/// booleans, then containers, then the empty values.
+fn sort_rank(value: &Value) -> u8 {
+    match value {
+        Value::Integer(_) | Value::Float(_) => 0,
+        Value::String(_) => 1,
+        Value::Boolean(_) => 2,
+        Value::List(_) => 3,
+        Value::Dictionary(_) => 4,
+        Value::Null => 5,
+        Value::NaN => 6,
+        Value::Unit => 7,
+    }
+}
+
+/// Total order over `Value`, used by SORT.
+///
+/// This MUST be a total order. A comparator that reports unrelated kinds as
+/// `Equal` is not transitive -- `1 < 2` while `1 == "x"` and `2 == "x"` -- and
+/// Rust's sort detects the inconsistency and PANICS, aborting the interpreter
+/// on a list a user is perfectly entitled to write. Comparing the kind rank
+/// first makes mixed lists group by kind instead, which is deterministic and
+/// cannot panic. Integers and floats share a rank so they still interleave
+/// numerically, which is the documented behaviour.
+fn sort_cmp(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.total_cmp(y),
+        (Value::Integer(x), Value::Float(y)) => bigint_to_f64(x).total_cmp(y),
+        (Value::Float(x), Value::Integer(y)) => x.total_cmp(&bigint_to_f64(y)),
+        (Value::String(x), Value::String(y)) => x.cmp(y),
+        (Value::Boolean(x), Value::Boolean(y)) => x.cmp(y),
+        // Same-kind values with no meaningful order (two lists, two
+        // dictionaries, two NULLs) compare equal; `sort_by` is stable, so they
+        // keep their original relative order.
+        _ => sort_rank(a).cmp(&sort_rank(b)).then(Ordering::Equal),
+    }
+}
+
 const MAX_STACK_DEPTH: usize = 1000;
 const MAX_LOOP_ITERATIONS: usize = 1_000_000;
+
+/// Size of the userspace buffer used when streaming straight to stdout.
+const STREAM_BUF_BYTES: usize = 64 * 1024;
+
+/// Where a run's program output goes.
+///
+/// Chosen once, before evaluation starts. [`OutputMode::Capture`] is for
+/// callers that are handed the whole output back as a `String` -- the test
+/// suite, `execute_code(.., return_output = true)` and WASM.
+/// [`OutputMode::Stdout`] is for the CLI, which wants the text on the terminal
+/// as it is produced rather than accumulated in RAM until the program ends.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OutputMode {
+    /// Accumulate everything into a `String` and return it.
+    Capture,
+    /// Write through to a locked, buffered stdout; return an empty `String`.
+    Stdout,
+}
+
+/// The sink every DISPLAY writes through.
+///
+/// Deliberately an enum rather than a `Box<dyn Write>`. The hot arm is
+/// `Capture`, which wants a plain `String::push_str`: no `io::Result` to
+/// inspect, no UTF-8 re-validation, no vtable indirection, and the whole call
+/// still inlines. A trait object would force every DISPLAY through an indirect
+/// `write_all(&[u8])` whose `io::Result` the caller then throws away. The
+/// enum's discriminant test is one perfectly-predicted branch, since a given
+/// run only ever takes one arm.
+enum OutputSink {
+    Capture(String),
+    Stream {
+        writer: io::BufWriter<io::StdoutLock<'static>>,
+        /// First write/flush failure seen, if any. Reported once the run ends
+        /// so a full disk cannot silently truncate a program's output.
+        error: Option<io::Error>,
+        /// Flush after every write, reproducing the old `println!` +
+        /// `stdout().flush()` behaviour. Set when stdout is a terminal (so
+        /// interactive prompts still appear before the program blocks on
+        /// INPUT) or when debug tracing is on (so the trace, which goes out
+        /// through `println!`, stays interleaved in the right order).
+        autoflush: bool,
+    },
+}
+
+/// Keep the FIRST io error seen; later ones are usually consequences of it.
+///
+/// `BrokenPipe` is deliberately NOT an error: `fpli run prog.psl | head` closes
+/// the pipe early, and every well-behaved Unix program treats that as a normal
+/// end of output rather than a failure.
+fn record_io(slot: &mut Option<io::Error>, result: io::Result<()>) {
+    if let Err(e) = result
+        && e.kind() != io::ErrorKind::BrokenPipe
+        && slot.is_none()
+    {
+        *slot = Some(e);
+    }
+}
+
+fn stdout_is_terminal() -> bool {
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
+    {
+        use std::io::IsTerminal;
+        io::stdout().is_terminal()
+    }
+    #[cfg(all(target_arch = "wasm32", not(feature = "wasi")))]
+    {
+        false
+    }
+}
+
+impl OutputSink {
+    fn new(mode: OutputMode, debug: bool) -> Self {
+        match mode {
+            OutputMode::Capture => OutputSink::Capture(String::new()),
+            OutputMode::Stdout => OutputSink::Stream {
+                writer: io::BufWriter::with_capacity(STREAM_BUF_BYTES, io::stdout().lock()),
+                error: None,
+                autoflush: debug || stdout_is_terminal(),
+            },
+        }
+    }
+
+    /// Program output with no trailing newline (DISPLAYINLINE).
+    #[inline]
+    fn write_str(&mut self, s: &str) {
+        match self {
+            OutputSink::Capture(buf) => buf.push_str(s),
+            OutputSink::Stream {
+                writer,
+                error,
+                autoflush,
+            } => {
+                record_io(error, writer.write_all(s.as_bytes()));
+                if *autoflush {
+                    record_io(error, writer.flush());
+                }
+            }
+        }
+    }
+
+    /// Program output followed by a newline (DISPLAY).
+    #[inline]
+    fn write_line(&mut self, s: &str) {
+        match self {
+            OutputSink::Capture(buf) => {
+                buf.push_str(s);
+                buf.push('\n');
+            }
+            OutputSink::Stream {
+                writer,
+                error,
+                autoflush,
+            } => {
+                record_io(error, writer.write_all(s.as_bytes()));
+                record_io(error, writer.write_all(b"\n"));
+                if *autoflush {
+                    record_io(error, writer.flush());
+                }
+            }
+        }
+    }
+
+    /// Text that has only ever reached the *captured* output and was never
+    /// printed by the CLI: the f-string-assignment echo and the INPUT echo (the
+    /// terminal has already echoed what the user typed). Keeping these
+    /// capture-only is what makes the sink a pure refactor of observable CLI
+    /// behaviour.
+    #[inline]
+    fn record_line(&mut self, s: &str) {
+        if let OutputSink::Capture(buf) = self {
+            buf.push_str(s);
+            buf.push('\n');
+        }
+    }
+
+    /// Text that goes to the terminal but is never captured (the INPUT prompt).
+    /// Unused on `wasm32-unknown-unknown`, where INPUT goes through `prompt()`.
+    #[allow(dead_code)]
+    fn write_prompt(&mut self, s: &str) {
+        match self {
+            OutputSink::Capture(_) => {
+                print!("{}", s);
+                let _ = io::stdout().flush();
+            }
+            OutputSink::Stream { writer, error, .. } => {
+                record_io(error, writer.write_all(s.as_bytes()));
+                record_io(error, writer.flush());
+            }
+        }
+    }
+
+    /// Push whatever is buffered out to the OS. Called before anything that
+    /// stalls or blocks the program (INPUT, SLEEP) and once at the end of the
+    /// run, including the error path.
+    fn flush(&mut self) {
+        if let OutputSink::Stream { writer, error, .. } = self {
+            record_io(error, writer.flush());
+        }
+    }
+
+    /// Take the first write failure seen, if any.
+    fn take_write_error(&mut self) -> Option<io::Error> {
+        match self {
+            OutputSink::Capture(_) => None,
+            OutputSink::Stream { error, .. } => error.take(),
+        }
+    }
+
+    /// Finish the run: flush anything pending and yield the captured text
+    /// (empty when streaming).
+    fn finish(&mut self) -> String {
+        match self {
+            OutputSink::Capture(buf) => std::mem::take(buf),
+            OutputSink::Stream { writer, error, .. } => {
+                record_io(error, writer.flush());
+                String::new()
+            }
+        }
+    }
+}
+
+/// A declared procedure: its parameter names and its body.
+///
+/// Held behind an `Rc` because the whole procedure table is snapshotted into
+/// every child scope; sharing the bodies keeps that snapshot from deep-copying
+/// the AST of every procedure in the program on every call.
+type Procedure = Rc<(Vec<String>, Spanned)>;
+
+/// Name -> procedure map.
+///
+/// The `Rc` makes a scope snapshot O(1). It is copy-on-write via
+/// `Rc::make_mut`, which preserves the visibility rule that a scope's
+/// declarations are private to that scope: mutating a table that a child scope
+/// also holds forks it instead of writing through.
+type ProcedureTable = Rc<HashMap<String, Procedure>>;
 
 #[derive(Clone)]
 struct Environment {
     variables: HashMap<String, Value>,
-    procedures: HashMap<String, (Vec<String>, Spanned)>,
-    output: String,
+    procedures: ProcedureTable,
+    /// Shared by every scope in the run. Child scopes used to own a private
+    /// `String` that was concatenated into the parent's on every procedure
+    /// return and every caught error; sharing one sink removes those copies
+    /// entirely and keeps the write order identical, because the writes already
+    /// happened in program order and the copies only re-materialised that
+    /// order. It also fixes a real bug: a CATCH block that DISPLAYed and then
+    /// RETURNed never reached its copy-up, so its output was silently dropped.
+    output: Rc<RefCell<OutputSink>>,
     parent: Option<Rc<RefCell<Environment>>>,
     call_stack: Rc<RefCell<Vec<StackFrame>>>,
     parsed_flags: Rc<HashMap<String, String>>,
 }
 
 impl Environment {
-    fn new() -> Self {
+    fn new(mode: OutputMode, debug: bool) -> Self {
         Environment {
-            variables: HashMap::new(),  // skipcq: RS-W1079
-            procedures: HashMap::new(), // skipcq: RS-W1079
-            output: String::new(),      // skipcq: RS-W1079
+            variables: HashMap::new(),           // skipcq: RS-W1079
+            procedures: Rc::new(HashMap::new()), // skipcq: RS-W1079
+            output: Rc::new(RefCell::new(OutputSink::new(mode, debug))), // skipcq: RS-W1079
             parent: None,
             call_stack: Rc::new(RefCell::new(Vec::new())), // skipcq: RS-W1079
             parsed_flags: Rc::new(HashMap::new()),         // skipcq: RS-W1079
@@ -116,17 +571,30 @@ impl Environment {
     }
 
     fn new_with_parent(parent: Rc<RefCell<Environment>>) -> Self {
-        let procedures = parent.borrow().procedures.clone();
-        let call_stack = Rc::clone(&parent.borrow().call_stack);
-        let parsed_flags = Rc::clone(&parent.borrow().parsed_flags);
+        let (procedures, output, call_stack, parsed_flags) = {
+            let p = parent.borrow();
+            (
+                Rc::clone(&p.procedures),
+                Rc::clone(&p.output),
+                Rc::clone(&p.call_stack),
+                Rc::clone(&p.parsed_flags),
+            )
+        };
         Environment {
             variables: HashMap::new(), // skipcq: RS-W1079
             procedures,
-            output: String::new(), // skipcq: RS-W1079
+            output,
             parent: Some(Rc::clone(&parent)),
             call_stack,
             parsed_flags,
         }
+    }
+
+    /// The run-wide output sink. Cheap to reach: every scope holds the same
+    /// handle, so there is no walk up the parent chain.
+    #[inline]
+    fn sink(&self) -> &Rc<RefCell<OutputSink>> {
+        &self.output
     }
 
     fn get(&self, name: &str) -> Option<Value> {
@@ -139,12 +607,62 @@ impl Environment {
         None
     }
 
+    /// Look `name` up along the scope chain and hand the binding to `f` without
+    /// copying it, so reading one element out of a container does not clone the
+    /// container. `None` means the name is unbound.
+    ///
+    /// `f` runs while every scope from here to the owning one is immutably
+    /// borrowed, so it must not evaluate anything that could mutate a scope.
+    fn with_var<R>(&self, name: &str, f: impl FnOnce(&Value) -> R) -> Option<R> {
+        if let Some(value) = self.variables.get(name) {
+            return Some(f(value));
+        }
+        if let Some(ref parent) = self.parent {
+            return parent.borrow().with_var(name, f);
+        }
+        None
+    }
+
+    /// Mutate the container bound to `name` in place, returning `None` when the
+    /// name is unbound.
+    ///
+    /// Assignment always writes into the *current* scope, so a binding
+    /// inherited from an enclosing scope is copied down into this one before
+    /// being mutated -- exactly what the old read-clone / rebuild / write-back
+    /// sequence did, minus the two deep copies. If `f` rejects the value, a
+    /// binding that only existed because of this call is dropped again, so a
+    /// failed operation leaves every scope untouched.
+    ///
+    /// `f` must not touch the environment: this holds a mutable borrow of it.
+    fn with_var_mut<T, E>(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&mut Value) -> Result<T, E>,
+    ) -> Option<Result<T, E>> {
+        let copied_down = if self.variables.contains_key(name) {
+            false
+        } else {
+            let inherited = self.parent.as_ref()?.borrow().get(name)?;
+            self.variables.insert(name.to_string(), inherited);
+            true
+        };
+        let result = f(self.variables.get_mut(name)?);
+        if result.is_err() && copied_down {
+            self.variables.remove(name);
+        }
+        Some(result)
+    }
+
     fn set(&mut self, name: String, value: Value) {
         self.variables.insert(name, value);
     }
 
-    fn get_procedure(&self, name: &str) -> Option<(Vec<String>, Spanned)> {
+    fn get_procedure(&self, name: &str) -> Option<Procedure> {
         self.procedures.get(name).cloned()
+    }
+
+    fn declare_procedure(&mut self, name: String, procedure: Procedure) {
+        Rc::make_mut(&mut self.procedures).insert(name, procedure);
     }
 
     fn push_frame(&self, frame: StackFrame) {
@@ -213,23 +731,45 @@ fn init_env_with_args(env: &Rc<RefCell<Environment>>, args: &[String]) {
     env_mut.parsed_flags = Rc::new(flags);
 }
 
-#[allow(dead_code)]
-pub fn run(ast: Spanned) -> Result<String, String> {
-    let env = Rc::new(RefCell::new(Environment::new()));
-    init_env_with_args(&env, &[]);
-    match evaluate_node(&ast, Rc::clone(&env), false) {
-        Ok(_) => Ok(env.borrow().output.clone()),
-        Err(Interruption::Return(_)) => Ok(env.borrow().output.clone()),
-        Err(Interruption::Error(e)) => Err(e.message),
-    }
+/// Capturing run: the whole output is accumulated and returned. Used by the
+/// test suite, the library API and WASM.
+pub fn run_with_source(ast: Spanned, source: &str, args: &[String]) -> Result<String, PSLError> {
+    run_with_mode(ast, source, args, OutputMode::Capture, false)
 }
 
-pub fn run_with_source(ast: Spanned, _source: &str, args: &[String]) -> Result<String, PSLError> {
-    let env = Rc::new(RefCell::new(Environment::new()));
+/// Run with an explicit output destination.
+///
+/// [`OutputMode::Stdout`] streams through a locked, buffered stdout and returns
+/// an empty `String`. The sink is flushed before this returns on *every* path,
+/// error included, so whatever the program printed before failing reaches the
+/// terminal ahead of the caller's stderr report.
+///
+/// `debug` here only selects the sink's flush policy; the evaluator's own trace
+/// flag stays `false`, exactly as it always has been.
+pub fn run_with_mode(
+    ast: Spanned,
+    _source: &str,
+    args: &[String],
+    mode: OutputMode,
+    debug: bool,
+) -> Result<String, PSLError> {
+    let env = Rc::new(RefCell::new(Environment::new(mode, debug)));
     init_env_with_args(&env, args);
-    match evaluate_node(&ast, Rc::clone(&env), false) {
-        Ok(_) => Ok(env.borrow().output.clone()),
-        Err(Interruption::Return(_)) => Ok(env.borrow().output.clone()),
+    let result = evaluate_node(&ast, Rc::clone(&env), false);
+    let sink = Rc::clone(env.borrow().sink());
+    let output = sink.borrow_mut().finish();
+    // A failed write to stdout (a full disk, a closed descriptor) must not be
+    // swallowed: the program would otherwise exit 0 having silently lost
+    // output. A real error beats a plausible-looking empty result.
+    if let Some(err) = sink.borrow_mut().take_write_error() {
+        return Err(PSLError {
+            message: format!("Failed writing program output: {}", err),
+            span: None,
+            stack_trace: Vec::new(),
+        });
+    }
+    match result {
+        Ok(_) | Err(Interruption::Return(_)) => Ok(output),
         Err(Interruption::Error(e)) => Err(e),
     }
 }
@@ -242,6 +782,239 @@ fn evaluate_node(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool) -> 
 
     #[cfg(target_arch = "wasm32")]
     evaluate_node_impl(node, env, debug)
+}
+
+/// Evaluate a node in *statement position*, where its value is discarded.
+///
+/// Behaviour is identical to [`evaluate_node`] in every observable way; the
+/// only difference is that an assignment is free to append into the string it
+/// already holds instead of building a new one, which it cannot do when the
+/// assignment's value is still needed. Contexts that DO observe the value --
+/// the last statement of a block (a procedure without RETURN yields it) and the
+/// last iteration of FOR EACH -- still go through [`evaluate_node`].
+fn evaluate_for_effect(
+    node: &Spanned,
+    env: Rc<RefCell<Environment>>,
+    debug: bool,
+) -> Result<(), Interruption> {
+    match &node.node {
+        AstNode::Assignment(target, value) => {
+            if let Some(result) = try_self_append(target, value, &env, debug) {
+                return result;
+            }
+            evaluate_node(node, env, debug).map(|_| ())
+        }
+
+        // The only node kinds that recurse back into this function, and so the
+        // only ones needing the stack-headroom check `evaluate_node` makes.
+        // Every other arm ends in a call to `evaluate_node`, which makes it.
+        AstNode::Program(_) | AstNode::Block(_) | AstNode::If(_, _, _) => {
+            evaluate_nested_for_effect(node, env, debug)
+        }
+
+        _ => evaluate_node(node, env, debug).map(|_| ()),
+    }
+}
+
+fn evaluate_nested_for_effect(
+    node: &Spanned,
+    env: Rc<RefCell<Environment>>,
+    debug: bool,
+) -> Result<(), Interruption> {
+    #[cfg(not(target_arch = "wasm32"))]
+    return stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
+        evaluate_nested_for_effect_impl(node, env, debug)
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    evaluate_nested_for_effect_impl(node, env, debug)
+}
+
+fn evaluate_nested_for_effect_impl(
+    node: &Spanned,
+    env: Rc<RefCell<Environment>>,
+    debug: bool,
+) -> Result<(), Interruption> {
+    match &node.node {
+        // Every statement of a discarded block is itself discarded.
+        AstNode::Program(statements) | AstNode::Block(statements) => {
+            for stmt in statements {
+                evaluate_for_effect(stmt, Rc::clone(&env), debug)?;
+            }
+            Ok(())
+        }
+
+        // A discarded IF discards whichever branch it takes. Mirrors the
+        // `AstNode::If` arm of `evaluate_node_impl`, error and all.
+        AstNode::If(condition, then_branch, else_branch) => {
+            let cond_val = evaluate_node(condition, Rc::clone(&env), debug)?;
+            match cond_val {
+                Value::Boolean(true) => evaluate_for_effect(then_branch, env, debug),
+                Value::Boolean(false) => match else_branch {
+                    Some(else_branch) => evaluate_for_effect(else_branch, env, debug),
+                    None => Ok(()),
+                },
+                _ => Err(runtime_err("Condition must be a boolean", node.span, &env)),
+            }
+        }
+
+        _ => evaluate_node(node, env, debug).map(|_| ()),
+    }
+}
+
+/// Run one loop-body iteration, in statement position unless the loop hands its
+/// body's value back (FOR EACH evaluates to the value of its LAST iteration).
+fn evaluate_loop_body(
+    body: &Spanned,
+    env: Rc<RefCell<Environment>>,
+    debug: bool,
+    is_last: bool,
+) -> EvalResult {
+    if is_last {
+        evaluate_node(body, env, debug)
+    } else {
+        evaluate_for_effect(body, env, debug).map(|()| Value::Unit)
+    }
+}
+
+/// The source expression of a self-append assignment: `x <- x + <expr>` or
+/// `x <- CONCAT(x, <expr>)`, both written with `name` as the left operand.
+fn self_append_source<'a>(name: &str, value: &'a Spanned) -> Option<&'a Spanned> {
+    let (left, right) = match &value.node {
+        AstNode::BinaryOp(left, BinaryOperator::Add, right) => (left, right),
+        AstNode::Concat(left, right) => (left, right),
+        _ => return None,
+    };
+    match &left.node {
+        AstNode::Identifier(left_name) if left_name == name => Some(right),
+        _ => None,
+    }
+}
+
+/// Fast path for the string-building idiom every student writes:
+///
+/// ```text
+/// s <- ""
+/// REPEAT n TIMES { s <- s + "x" }
+/// ```
+///
+/// Evaluated literally that is O(n^2): each iteration clones `s` out of the
+/// environment, allocates a fresh `String` for the concatenation, and clones it
+/// again on the way back in. Appending into the `String` that is already there
+/// makes the loop O(n) amortised and drops the allocation per iteration.
+///
+/// Returns `None` when the shape does not apply, leaving the caller to take the
+/// ordinary assignment path. `Some` means the assignment is finished (or has
+/// failed); the right-hand side has been evaluated exactly once either way.
+fn try_self_append(
+    target: &Spanned,
+    value: &Spanned,
+    env: &Rc<RefCell<Environment>>,
+    debug: bool,
+) -> Option<Result<(), Interruption>> {
+    if debug {
+        // Keep the `Assigning ...` trace exactly as the ordinary path prints it.
+        return None;
+    }
+    let AstNode::Identifier(name) = &target.node else {
+        return None;
+    };
+    let source = self_append_source(name, value)?;
+
+    // One lookup does double duty, so a non-string target pays nothing for
+    // passing through here. A string is appended to in place below; anything
+    // else (`i <- i + 1`, a list, ...) comes back as the copy the ordinary path
+    // would have made when it evaluated the left operand, and is combined with
+    // the right-hand side further down instead. An unbound name is left to the
+    // ordinary path, which owns that error.
+    let bound = {
+        let scope = env.borrow();
+        scope.with_var(name, |current| match current {
+            Value::String(_) => None,
+            other => Some(other.clone()),
+        })
+    };
+    let not_a_string = bound?;
+
+    // Evaluated BEFORE the mutable borrow below, which is what makes
+    // `s <- s + s`, `s <- s + f(s)` and friends safe: the right-hand side may
+    // read the target or call into a procedure, and taking the borrow first
+    // would panic the RefCell.
+    let appended = match evaluate_node(source, Rc::clone(env), debug) {
+        Ok(val) => val,
+        Err(err) => return Some(Err(err)),
+    };
+
+    // Past this point the right-hand side has already run, so there is no
+    // falling back to the ordinary path: that would run its side effects twice.
+    if let Some(left) = not_a_string {
+        return Some(store_combined(name, left, appended, value, env));
+    }
+    let Value::String(text) = appended else {
+        // `s <- s + 1` and the like: the ordinary path's type error, from the
+        // same span, with the right-hand side still evaluated only once.
+        return Some(combine_with_current(name, appended, value, env));
+    };
+    let stored = env
+        .borrow_mut()
+        .with_var_mut(name, |current| match current {
+            Value::String(s) => {
+                s.push_str(&text);
+                Ok(())
+            }
+            _ => Err(()),
+        });
+    if matches!(stored, Some(Ok(()))) {
+        return Some(Ok(()));
+    }
+    // Only reachable if evaluating the right-hand side rebound the target.
+    Some(combine_with_current(name, Value::String(text), value, env))
+}
+
+/// Combine the target's own value with an already-evaluated right-hand side and
+/// store the result, exactly as the ordinary assignment path would have.
+fn store_combined(
+    name: &str,
+    left: Value,
+    rhs: Value,
+    value: &Spanned,
+    env: &Rc<RefCell<Environment>>,
+) -> Result<(), Interruption> {
+    let combined = match &value.node {
+        AstNode::Concat(_, _) => match (&left, &rhs) {
+            (Value::String(a), Value::String(b)) => Value::String(format!("{}{}", a, b)),
+            _ => {
+                return Err(runtime_err(
+                    "CONCAT requires string arguments",
+                    value.span,
+                    env,
+                ));
+            }
+        },
+        _ => evaluate_binary_op(&left, &BinaryOperator::Add, &rhs)
+            .map_err(|msg| runtime_err(msg, value.span, env))?,
+    };
+    env.borrow_mut().set(name.to_string(), combined);
+    Ok(())
+}
+
+/// [`store_combined`] for the paths that have not already copied the target out
+/// of the environment.
+fn combine_with_current(
+    name: &str,
+    rhs: Value,
+    value: &Spanned,
+    env: &Rc<RefCell<Environment>>,
+) -> Result<(), Interruption> {
+    let current = env.borrow().get(name);
+    match current {
+        Some(left) => store_combined(name, left, rhs, value, env),
+        None => Err(runtime_err(
+            format!("Undefined variable: {}", name),
+            value.span,
+            env,
+        )),
+    }
 }
 
 // skipcq: RS-R1000
@@ -257,11 +1030,15 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
 
     match ast_node {
         AstNode::Program(statements) | AstNode::Block(statements) => {
-            let mut last_value = Value::Unit;
-            for stmt in statements {
-                last_value = evaluate_node(stmt, Rc::clone(&env), debug)?;
+            // Only the last statement's value survives, so every earlier one
+            // runs in statement position (see `evaluate_for_effect`).
+            let Some((last, leading)) = statements.split_last() else {
+                return Ok(Value::Unit);
+            };
+            for stmt in leading {
+                evaluate_for_effect(stmt, Rc::clone(&env), debug)?;
             }
-            Ok(last_value)
+            evaluate_node(last, Rc::clone(&env), debug)
         }
 
         AstNode::Integer(n) => Ok(Value::Integer(n.clone())),
@@ -281,12 +1058,12 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::Dictionary(pairs) => {
-            let mut entries: Vec<(DictKey, Value)> = Vec::new();
+            let mut entries = Dict::new();
             for (key_expr, value_expr) in pairs {
                 let key_val = evaluate_node(key_expr, Rc::clone(&env), debug)?;
                 let key = value_to_key(&key_val).map_err(|msg| runtime_err(msg, span, &env))?;
                 let value = evaluate_node(value_expr, Rc::clone(&env), debug)?;
-                dict_insert(&mut entries, key, value);
+                entries.insert(key, value);
             }
             Ok(Value::Dictionary(entries))
         }
@@ -307,9 +1084,11 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     println!("Assigning {} = {:?}", name, val);
                 }
                 if matches!(&value.node, AstNode::FormattedString(_, _)) {
+                    // Capture-only: assigning an f-string has never printed to
+                    // the CLI's stdout, it only ever showed up in the captured
+                    // output.
                     let output = value_to_string(&val);
-                    env.borrow_mut().output.push_str(&output);
-                    env.borrow_mut().output.push('\n');
+                    env.borrow().sink().borrow_mut().record_line(&output);
                 }
                 env.borrow_mut().set(name.clone(), val.clone());
                 Ok(val)
@@ -319,9 +1098,19 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::BinaryOp(left_expr, op, right_expr) => match op {
+            // Both operands are type-checked, not just the right one: a
+            // non-boolean left operand is an error even though the operator
+            // short-circuits.
             BinaryOperator::And => {
                 let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
-                if matches!(left_val, Value::Boolean(false)) {
+                let Value::Boolean(left_bool) = left_val else {
+                    return Err(runtime_err(
+                        "Left operand of AND must be boolean",
+                        span,
+                        &env,
+                    ));
+                };
+                if !left_bool {
                     Ok(Value::Boolean(false))
                 } else {
                     let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
@@ -338,7 +1127,14 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             }
             BinaryOperator::Or => {
                 let left_val = evaluate_node(left_expr, Rc::clone(&env), debug)?;
-                if matches!(left_val, Value::Boolean(true)) {
+                let Value::Boolean(left_bool) = left_val else {
+                    return Err(runtime_err(
+                        "Left operand of OR must be boolean",
+                        span,
+                        &env,
+                    ));
+                };
+                if left_bool {
                     Ok(Value::Boolean(true))
                 } else {
                     let right_val = evaluate_node(right_expr, Rc::clone(&env), debug)?;
@@ -385,7 +1181,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     .to_i64()
                     .ok_or_else(|| runtime_err("REPEAT count too large", span, &env))?;
                 for _ in 0..iterations {
-                    evaluate_node(body, Rc::clone(&env), debug)?;
+                    evaluate_for_effect(body, Rc::clone(&env), debug)?;
                 }
                 Ok(Value::Unit)
             } else {
@@ -397,25 +1193,11 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             Some(expr) => {
                 let result = evaluate_node(expr, Rc::clone(&env), debug)?;
                 let output = value_to_string(&result);
-                if !std::thread::current()
-                    .name()
-                    .is_some_and(|name| name.starts_with("test"))
-                {
-                    println!("{}", output);
-                    io::stdout().flush().unwrap();
-                }
-                env.borrow_mut().output.push_str(&output);
-                env.borrow_mut().output.push('\n');
+                env.borrow().sink().borrow_mut().write_line(&output);
                 Ok(result)
             }
             None => {
-                if !std::thread::current()
-                    .name()
-                    .is_some_and(|name| name.starts_with("test"))
-                {
-                    println!();
-                }
-                env.borrow_mut().output.push('\n');
+                env.borrow().sink().borrow_mut().write_line("");
                 Ok(Value::Unit)
             }
         },
@@ -423,14 +1205,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         AstNode::DisplayInline(expr) => {
             let value = evaluate_node(expr, Rc::clone(&env), debug)?;
             let output = value_to_string(&value);
-            if !std::thread::current()
-                .name()
-                .is_some_and(|name| name.starts_with("test"))
-            {
-                print!("{}", output);
-                io::stdout().flush().unwrap();
-            }
-            env.borrow_mut().output.push_str(&output);
+            env.borrow().sink().borrow_mut().write_str(&output);
             Ok(Value::Unit)
         }
 
@@ -442,8 +1217,13 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 if let Some(prompt_expr) = prompt {
                     let prompt_val = evaluate_node(prompt_expr, Rc::clone(&env), debug)?;
                     let prompt_str = value_to_string(&prompt_val);
-                    print!("{}", prompt_str);
-                    io::stdout().flush().unwrap();
+                    // Through the sink, so a buffered stream is drained (and
+                    // the prompt is on screen) before we block on stdin.
+                    env.borrow().sink().borrow_mut().write_prompt(&prompt_str);
+                } else {
+                    // No prompt of our own, but the program may have just
+                    // DISPLAYINLINEd one. Drain before blocking either way.
+                    env.borrow().sink().borrow_mut().flush();
                 }
 
                 io::stdin()
@@ -452,8 +1232,9 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 let input = input_str.trim().to_string();
 
                 if prompt.is_none() {
-                    env.borrow_mut().output.push_str(&input);
-                    env.borrow_mut().output.push('\n');
+                    // Capture-only echo, as before: the terminal has already
+                    // echoed what the user typed.
+                    env.borrow().sink().borrow_mut().record_line(&input);
                 }
 
                 Ok(Value::String(input))
@@ -471,8 +1252,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 let input = crate::interpreter::prompt(&prompt_text);
 
                 if prompt.is_none() {
-                    env.borrow_mut().output.push_str(&input);
-                    env.borrow_mut().output.push('\n');
+                    env.borrow().sink().borrow_mut().record_line(&input);
                 }
 
                 Ok(Value::String(input))
@@ -481,8 +1261,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
 
         AstNode::ProcedureDecl(name, params, body) => {
             env.borrow_mut()
-                .procedures
-                .insert(name.clone(), (params.clone(), (**body).clone()));
+                .declare_procedure(name.clone(), Rc::new((params.clone(), (**body).clone())));
             Ok(Value::Unit)
         }
 
@@ -501,7 +1280,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 runtime_err(format!("Procedure '{}' not found", name), span, &env)
             })?;
             let local_env = Rc::new(RefCell::new(Environment::new_with_parent(Rc::clone(&env))));
-            let (params, ref body) = procedure;
+            let (params, body) = (&procedure.0, &procedure.1);
             for (param, arg) in params.iter().zip(args) {
                 let arg_value = evaluate_node(arg, Rc::clone(&env), debug)?;
                 local_env.borrow_mut().set(param.clone(), arg_value);
@@ -512,7 +1291,8 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             });
             let body_result = evaluate_node(body, Rc::clone(&local_env), debug);
             env.borrow().pop_frame();
-            env.borrow_mut().output.push_str(&local_env.borrow().output);
+            // No output copy-up: `local_env` shares the caller's sink, so the
+            // callee's writes are already in place, in order.
             match body_result {
                 Err(Interruption::Return(val)) => Ok(val),
                 other => other,
@@ -520,82 +1300,12 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         }
 
         AstNode::ListAccess(list, index) => {
+            if let Some(result) = eval_indexed_read_in_place(list, index, &env, span, debug) {
+                return result;
+            }
             let current_value = evaluate_node(list, Rc::clone(&env), debug)?;
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
-
-            if let Value::Dictionary(entries) = &current_value {
-                let key = value_to_key(&index_val).map_err(|msg| runtime_err(msg, span, &env))?;
-                return match dict_get(entries, &key) {
-                    Some(value) => Ok(value.clone()),
-                    None => Err(runtime_err(
-                        format!("Key not found: {}", key_to_string(&key)),
-                        span,
-                        &env,
-                    )),
-                };
-            }
-
-            match (current_value, index_val) {
-                (Value::List(elements), Value::Integer(i)) => {
-                    let idx = &i - BigInt::one();
-                    if idx.is_negative() {
-                        Err(runtime_err(
-                            "List index out of bounds: index cannot be less than 1",
-                            span,
-                            &env,
-                        ))
-                    } else {
-                        let uidx = idx
-                            .to_usize()
-                            .ok_or_else(|| runtime_err("List index too large", span, &env))?;
-                        if uidx >= elements.len() {
-                            Err(runtime_err(
-                                format!(
-                                    "List index out of bounds: {} (size: {})",
-                                    i,
-                                    elements.len()
-                                ),
-                                span,
-                                &env,
-                            ))
-                        } else {
-                            Ok(elements[uidx].clone())
-                        }
-                    }
-                }
-                (Value::String(s), Value::Integer(i)) => {
-                    let idx = &i - BigInt::one();
-                    if idx.is_negative() {
-                        Err(runtime_err(
-                            "String index out of bounds: index cannot be less than 1",
-                            span,
-                            &env,
-                        ))
-                    } else {
-                        let uidx = idx
-                            .to_usize()
-                            .ok_or_else(|| runtime_err("String index too large", span, &env))?;
-                        if uidx >= s.len() {
-                            Err(runtime_err(
-                                format!("String index out of bounds: {} (size: {})", i, s.len()),
-                                span,
-                                &env,
-                            ))
-                        } else {
-                            let ch = s
-                                .chars()
-                                .nth(uidx)
-                                .ok_or_else(|| runtime_err("Invalid string index", span, &env))?;
-                            Ok(Value::String(ch.to_string()))
-                        }
-                    }
-                }
-                _ => Err(runtime_err(
-                    "Invalid index access - expected list or string and integer index",
-                    span,
-                    &env,
-                )),
-            }
+            index_value(&current_value, &index_val, span, &env)
         }
 
         AstNode::ListAssignment(list, index, value) => {
@@ -617,11 +1327,9 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                 let start_idx = &start - BigInt::one();
                 let end_idx = &end - BigInt::one();
                 match (start_idx.to_usize(), end_idx.to_usize()) {
-                    (Some(si), Some(ei))
-                        if !start_idx.is_negative() && end_idx >= start_idx && ei <= s.len() =>
-                    {
-                        Ok(Value::String(s[si..=ei].to_string()))
-                    }
+                    (Some(si), Some(ei)) if !start_idx.is_negative() => char_range(&s, si, ei)
+                        .map(|slice| Value::String(slice.to_string()))
+                        .ok_or_else(|| runtime_err("Invalid substring indices", span, &env)),
                     _ => Err(runtime_err("Invalid substring indices", span, &env)),
                 }
             } else {
@@ -668,7 +1376,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                     return Err(runtime_err("Maximum loop iterations exceeded", span, &env));
                 }
 
-                evaluate_node(body, Rc::clone(&env), debug)?;
+                evaluate_for_effect(body, Rc::clone(&env), debug)?;
 
                 let cond_val = evaluate_node(condition, Rc::clone(&env), debug)?;
                 match cond_val {
@@ -691,26 +1399,29 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             match list_val {
                 Value::List(elements) => {
                     let mut result = Value::Unit;
-                    for element in elements {
+                    let count = elements.len();
+                    for (i, element) in elements.into_iter().enumerate() {
                         env.borrow_mut().set(var_name.clone(), element);
-                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                        result = evaluate_loop_body(body, Rc::clone(&env), debug, i + 1 == count)?;
                     }
                     Ok(result)
                 }
                 Value::String(s) => {
                     let mut result = Value::Unit;
-                    for c in s.chars() {
+                    let count = s.chars().count();
+                    for (i, c) in s.chars().enumerate() {
                         env.borrow_mut()
                             .set(var_name.clone(), Value::String(c.to_string()));
-                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                        result = evaluate_loop_body(body, Rc::clone(&env), debug, i + 1 == count)?;
                     }
                     Ok(result)
                 }
                 Value::Dictionary(entries) => {
                     let mut result = Value::Unit;
-                    for (key, _) in entries {
-                        env.borrow_mut().set(var_name.clone(), key_to_value(&key));
-                        result = evaluate_node(body, Rc::clone(&env), debug)?;
+                    let count = entries.len();
+                    for (i, (key, _)) in entries.iter().enumerate() {
+                        env.borrow_mut().set(var_name.clone(), key_to_value(key));
+                        result = evaluate_loop_body(body, Rc::clone(&env), debug, i + 1 == count)?;
                     }
                     Ok(result)
                 }
@@ -742,45 +1453,49 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             Ok(Value::String(result))
         }
 
-        AstNode::Length(list) => {
-            let list_val = evaluate_node(list, Rc::clone(&env), debug)?;
-            match list_val {
-                Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
-                Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
-                Value::Dictionary(entries) => Ok(Value::Integer(BigInt::from(entries.len()))),
-                _ => Err(runtime_err(
+        AstNode::Length(list) => with_value(list, &env, debug, container_len)?
+            .map(|len| Value::Integer(BigInt::from(len)))
+            .ok_or_else(|| {
+                runtime_err(
                     "LENGTH requires a list, string, or dictionary argument",
                     span,
                     &env,
-                )),
-            }
-        }
+                )
+            }),
 
-        AstNode::ListInsert(list, index, value) | AstNode::Insert(list, index, value) => {
+        AstNode::Insert(list, index, value) => {
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
             let insert_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &list.node {
-                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
-                    elements
-                } else {
+                if !env
+                    .borrow()
+                    .with_var(name, |value| matches!(value, Value::List(_)))
+                    .unwrap_or(false)
+                {
                     return Err(runtime_err(
                         format!("Variable {} is not a list", name),
                         span,
                         &env,
                     ));
-                };
+                }
 
                 if let Value::Integer(i) = index_val {
                     let idx = &i - BigInt::one();
-                    match idx.to_usize() {
-                        Some(uidx) if !idx.is_negative() && uidx <= elements.len() => {
-                            let mut new_elements = elements.clone();
-                            new_elements.insert(uidx, insert_val.clone());
-                            env.borrow_mut()
-                                .set(name.clone(), Value::List(new_elements));
-                            Ok(insert_val)
+                    let outcome = env.borrow_mut().with_var_mut(name, |value| {
+                        let Value::List(elements) = value else {
+                            return Err(());
+                        };
+                        match idx.to_usize() {
+                            Some(uidx) if !idx.is_negative() && uidx <= elements.len() => {
+                                elements.insert(uidx, insert_val.clone());
+                                Ok(())
+                            }
+                            _ => Err(()),
                         }
+                    });
+                    match outcome {
+                        Some(Ok(())) => Ok(insert_val),
                         _ => Err(runtime_err("List index out of bounds", span, &env)),
                     }
                 } else {
@@ -791,40 +1506,44 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             }
         }
 
-        AstNode::ListAppend(list, value) | AstNode::Append(list, value) => {
+        AstNode::Append(list, value) => {
             let append_val = evaluate_node(value, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &list.node {
-                let elements = if let Some(Value::List(elements)) = env.borrow().get(name) {
-                    elements
-                } else {
-                    return Err(runtime_err(
+                let outcome = env.borrow_mut().with_var_mut(name, |value| {
+                    let Value::List(elements) = value else {
+                        return Err(());
+                    };
+                    elements.push(append_val.clone());
+                    Ok(())
+                });
+                match outcome {
+                    Some(Ok(())) => Ok(append_val),
+                    _ => Err(runtime_err(
                         format!("Variable {} is not a list", name),
                         span,
                         &env,
-                    ));
-                };
-
-                let mut new_elements = elements.clone();
-                new_elements.push(append_val.clone());
-                env.borrow_mut()
-                    .set(name.clone(), Value::List(new_elements));
-                Ok(append_val)
+                    )),
+                }
             } else {
                 Err(runtime_err("APPEND requires a list variable", span, &env))
             }
         }
 
-        AstNode::ListRemove(list, index) | AstNode::Remove(list, index) => {
+        AstNode::Remove(list, index) => {
             let index_val = evaluate_node(index, Rc::clone(&env), debug)?;
 
             if let AstNode::Identifier(name) = &list.node {
-                let current = env.borrow().get(name);
-                let elements = match current {
-                    Some(Value::Dictionary(entries)) => {
-                        return dict_remove_entry(name, entries, &index_val, &env, span);
+                let kind = env.borrow().with_var(name, |value| match value {
+                    Value::Dictionary(_) => ContainerKind::Dictionary,
+                    Value::List(_) => ContainerKind::List,
+                    _ => ContainerKind::Other,
+                });
+                match kind {
+                    Some(ContainerKind::Dictionary) => {
+                        return dict_remove_entry(name, &index_val, &env, span);
                     }
-                    Some(Value::List(elements)) => elements,
+                    Some(ContainerKind::List) => {}
                     _ => {
                         return Err(runtime_err(
                             format!("Variable {} is not a list", name),
@@ -832,18 +1551,23 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                             &env,
                         ));
                     }
-                };
+                }
 
                 if let Value::Integer(i) = index_val {
                     let idx = &i - BigInt::one();
-                    match idx.to_usize() {
-                        Some(uidx) if !idx.is_negative() && uidx < elements.len() => {
-                            let mut new_elements = elements.clone();
-                            let removed_value = new_elements.remove(uidx);
-                            env.borrow_mut()
-                                .set(name.clone(), Value::List(new_elements));
-                            Ok(removed_value)
+                    let outcome = env.borrow_mut().with_var_mut(name, |value| {
+                        let Value::List(elements) = value else {
+                            return Err(());
+                        };
+                        match idx.to_usize() {
+                            Some(uidx) if !idx.is_negative() && uidx < elements.len() => {
+                                Ok(elements.remove(uidx))
+                            }
+                            _ => Err(()),
                         }
+                    });
+                    match outcome {
+                        Some(Ok(removed_value)) => Ok(removed_value),
                         _ => Err(runtime_err("List index out of bounds", span, &env)),
                     }
                 } else {
@@ -924,20 +1648,7 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
         AstNode::Sort(list_expr) => {
             let list_val = evaluate_node(list_expr, Rc::clone(&env), debug)?;
             if let Value::List(mut elements) = list_val {
-                elements.sort_by(|a, b| match (a, b) {
-                    (Value::Integer(a_int), Value::Integer(b_int)) => a_int.cmp(b_int),
-                    (Value::Float(a_float), Value::Float(b_float)) => a_float
-                        .partial_cmp(b_float)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::Integer(a_int), Value::Float(b_float)) => bigint_to_f64(a_int)
-                        .partial_cmp(b_float)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::Float(a_float), Value::Integer(b_int)) => a_float
-                        .partial_cmp(&bigint_to_f64(b_int))
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::String(a_str), Value::String(b_str)) => a_str.cmp(b_str),
-                    _ => std::cmp::Ordering::Equal,
-                });
+                elements.sort_by(sort_cmp);
                 Ok(Value::List(elements))
             } else {
                 Err(runtime_err(
@@ -963,8 +1674,11 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
                         .borrow_mut()
                         .set(var_name.clone(), Value::String(error.message));
                 }
+                // Same as a procedure call: `catch_env` shares the sink, so
+                // there is nothing to copy up. This is also the fix for a CATCH
+                // block that DISPLAYs and then RETURNs -- the `?` below used to
+                // skip the copy-up and silently drop that output.
                 let result = evaluate_node(catch_block, Rc::clone(&catch_env), debug)?;
-                env.borrow_mut().output.push_str(&catch_env.borrow().output);
                 Ok(result)
             }
         },
@@ -986,72 +1700,52 @@ fn evaluate_node_impl(node: &Spanned, env: Rc<RefCell<Environment>>, debug: bool
             }
         }
 
-        AstNode::Comment(_) => Ok(Value::Unit),
+        AstNode::Comment => Ok(Value::Unit),
     }
 }
 
-/// Remove `key_val` from the dictionary held by variable `name`, writing the
-/// shortened dictionary back and returning the removed value.
+/// Remove `key_val` from the dictionary held by variable `name` in place,
+/// returning the removed value. Callers have already established that `name` is
+/// bound to a dictionary.
 fn dict_remove_entry(
     name: &str,
-    mut entries: Vec<(DictKey, Value)>,
     key_val: &Value,
     env: &Rc<RefCell<Environment>>,
     span: Span,
 ) -> EvalResult {
     let key = value_to_key(key_val).map_err(|msg| runtime_err(msg, span, env))?;
-    match entries.iter().position(|(k, _)| *k == key) {
-        Some(pos) => {
-            let (_, removed) = entries.remove(pos);
-            env.borrow_mut()
-                .set(name.to_string(), Value::Dictionary(entries));
-            Ok(removed)
+    let outcome = env.borrow_mut().with_var_mut(name, |value| {
+        let Value::Dictionary(entries) = value else {
+            return Err(format!("Variable {} is not a dictionary", name));
+        };
+        match entries.remove(&key) {
+            Some(removed) => Ok(removed),
+            None => Err(format!("Key not found: {}", key_to_string(&key))),
         }
+    });
+    match outcome {
+        Some(Ok(removed)) => Ok(removed),
+        Some(Err(msg)) => Err(runtime_err(msg, span, env)),
         None => Err(runtime_err(
-            format!("Key not found: {}", key_to_string(&key)),
+            format!("Variable {} is not a dictionary", name),
             span,
             env,
         )),
     }
 }
 
-/// Write `new_val` at `index` inside a list or dictionary, returning the
-/// updated container. Missing list indices are an error; missing dictionary
-/// keys are created.
-fn container_set(container: Value, index: Value, new_val: Value) -> Result<Value, String> {
-    match container {
-        Value::List(mut elements) => {
-            if let Value::Integer(i) = index {
-                let idx = &i - BigInt::one();
-                match idx.to_usize() {
-                    Some(uidx) if uidx < elements.len() => {
-                        elements[uidx] = new_val;
-                        Ok(Value::List(elements))
-                    }
-                    _ => Err("List index out of bounds".to_string()),
-                }
-            } else {
-                Err("Invalid list index".to_string())
-            }
-        }
-        Value::Dictionary(mut entries) => {
-            let key = value_to_key(&index)?;
-            dict_insert(&mut entries, key, new_val);
-            Ok(Value::Dictionary(entries))
-        }
-        _ => Err("Invalid index assignment - expected list or dictionary".to_string()),
-    }
-}
-
-/// Read `container[index]` while walking an assignment path. Only lists and
-/// dictionaries can appear as intermediate containers.
-fn container_get(container: &Value, index: &Value) -> Result<Value, String> {
+/// Write `new_val` at `index` inside a list or dictionary, in place. Missing
+/// list indices are an error; missing dictionary keys are created.
+fn container_set(container: &mut Value, index: &Value, new_val: Value) -> Result<(), String> {
     match container {
         Value::List(elements) => {
             if let Value::Integer(i) = index {
                 let idx = i - BigInt::one();
                 match idx.to_usize() {
-                    Some(uidx) if uidx < elements.len() => Ok(elements[uidx].clone()),
+                    Some(uidx) if uidx < elements.len() => {
+                        elements[uidx] = new_val;
+                        Ok(())
+                    }
                     _ => Err("List index out of bounds".to_string()),
                 }
             } else {
@@ -1060,8 +1754,32 @@ fn container_get(container: &Value, index: &Value) -> Result<Value, String> {
         }
         Value::Dictionary(entries) => {
             let key = value_to_key(index)?;
-            match dict_get(entries, &key) {
-                Some(value) => Ok(value.clone()),
+            entries.insert(key, new_val);
+            Ok(())
+        }
+        _ => Err("Invalid index assignment - expected list or dictionary".to_string()),
+    }
+}
+
+/// Borrow `container[index]` mutably while walking an assignment path. Only
+/// lists and dictionaries can appear as intermediate containers.
+fn container_get_mut<'a>(container: &'a mut Value, index: &Value) -> Result<&'a mut Value, String> {
+    match container {
+        Value::List(elements) => {
+            if let Value::Integer(i) = index {
+                let idx = i - BigInt::one();
+                match idx.to_usize() {
+                    Some(uidx) if uidx < elements.len() => Ok(&mut elements[uidx]),
+                    _ => Err("List index out of bounds".to_string()),
+                }
+            } else {
+                Err("Invalid list index".to_string())
+            }
+        }
+        Value::Dictionary(entries) => {
+            let key = value_to_key(index)?;
+            match entries.get_mut(&key) {
+                Some(value) => Ok(value),
                 None => Err(format!("Key not found: {}", key_to_string(&key))),
             }
         }
@@ -1069,25 +1787,319 @@ fn container_get(container: &Value, index: &Value) -> Result<Value, String> {
     }
 }
 
-/// Rebuild `container` with `new_val` written at the nested location named by
-/// `path`, which is ordered from the root container outward.
-fn set_in_path(container: Value, path: &[Value], new_val: Value) -> Result<Value, String> {
+/// Borrow `container[index]` in place for a read.
+///
+/// `Ok(None)` means the container is not one whose elements can be handed out
+/// by reference -- indexing a string materialises a fresh one-character value
+/// -- so the caller falls back to [`index_value`]. Every error message matches
+/// the general read path exactly.
+fn index_ref<'a>(
+    container: &'a Value,
+    index: &Value,
+    span: Span,
+    env: &Rc<RefCell<Environment>>,
+) -> Result<Option<&'a Value>, Interruption> {
+    if let Value::Dictionary(entries) = container {
+        let key = value_to_key(index).map_err(|msg| runtime_err(msg, span, env))?;
+        return match entries.get(&key) {
+            Some(value) => Ok(Some(value)),
+            None => Err(runtime_err(
+                format!("Key not found: {}", key_to_string(&key)),
+                span,
+                env,
+            )),
+        };
+    }
+    match (container, index) {
+        (Value::List(elements), Value::Integer(i)) => {
+            let idx = i - BigInt::one();
+            if idx.is_negative() {
+                Err(runtime_err(
+                    "List index out of bounds: index cannot be less than 1",
+                    span,
+                    env,
+                ))
+            } else {
+                let uidx = idx
+                    .to_usize()
+                    .ok_or_else(|| runtime_err("List index too large", span, env))?;
+                if uidx >= elements.len() {
+                    Err(runtime_err(
+                        format!("List index out of bounds: {} (size: {})", i, elements.len()),
+                        span,
+                        env,
+                    ))
+                } else {
+                    Ok(Some(&elements[uidx]))
+                }
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Read `container[index]`, cloning only the element that was selected.
+fn index_value(
+    container: &Value,
+    index: &Value,
+    span: Span,
+    env: &Rc<RefCell<Environment>>,
+) -> EvalResult {
+    if let Some(value) = index_ref(container, index, span, env)? {
+        return Ok(value.clone());
+    }
+    match (container, index) {
+        (Value::String(s), Value::Integer(i)) => {
+            let idx = i - BigInt::one();
+            if idx.is_negative() {
+                Err(runtime_err(
+                    "String index out of bounds: index cannot be less than 1",
+                    span,
+                    env,
+                ))
+            } else {
+                let uidx = idx
+                    .to_usize()
+                    .ok_or_else(|| runtime_err("String index too large", span, env))?;
+                match s.chars().nth(uidx) {
+                    Some(ch) => Ok(Value::String(ch.to_string())),
+                    None => Err(runtime_err(
+                        format!(
+                            "String index out of bounds: {} (size: {})",
+                            i,
+                            str_char_len(s)
+                        ),
+                        span,
+                        env,
+                    )),
+                }
+            }
+        }
+        _ => Err(runtime_err(
+            "Invalid index access - expected list or string and integer index",
+            span,
+            env,
+        )),
+    }
+}
+
+/// Follow an `a[i][j]...` chain, descending through intermediate containers by
+/// reference so that only the finally selected element is cloned. Each step
+/// carries the span of the access it came from, so errors are reported against
+/// the same node the general path would blame.
+fn index_chain(
+    container: &Value,
+    steps: &[(Value, Span)],
+    env: &Rc<RefCell<Environment>>,
+) -> EvalResult {
+    let Some(((index, step_span), rest)) = steps.split_first() else {
+        return Ok(container.clone());
+    };
+    if rest.is_empty() {
+        return index_value(container, index, *step_span, env);
+    }
+    match index_ref(container, index, *step_span, env)? {
+        Some(inner) => index_chain(inner, rest, env),
+        None => {
+            let inner = index_value(container, index, *step_span, env)?;
+            index_chain(&inner, rest, env)
+        }
+    }
+}
+
+/// Walk an index chain purely to surface its errors, cloning nothing.
+///
+/// The general path evaluates an index expression only after the access to its
+/// left has succeeded; the in-place path evaluates them one at a time and calls
+/// this in between, so a bad index still wins over an error in the next index
+/// expression.
+fn check_index_prefix(
+    container: &Value,
+    steps: &[(Value, Span)],
+    env: &Rc<RefCell<Environment>>,
+) -> Result<(), Interruption> {
+    let Some(((index, step_span), rest)) = steps.split_first() else {
+        return Ok(());
+    };
+    match index_ref(container, index, *step_span, env)? {
+        Some(inner) => check_index_prefix(inner, rest, env),
+        None => {
+            let inner = index_value(container, index, *step_span, env)?;
+            check_index_prefix(&inner, rest, env)
+        }
+    }
+}
+
+/// Conservative purity test: true only for expression forms that cannot write
+/// to the environment.
+///
+/// Reading a container in place skips the defensive copy the general path makes
+/// before evaluating the index, which is only sound when evaluating the index
+/// cannot modify the container being read.
+fn is_side_effect_free(node: &AstNode) -> bool {
+    match node {
+        AstNode::Integer(_)
+        | AstNode::Float(_)
+        | AstNode::String(_)
+        | AstNode::RawString(_)
+        | AstNode::Boolean(_)
+        | AstNode::Null
+        | AstNode::NaN
+        | AstNode::Identifier(_) => true,
+        AstNode::BinaryOp(left, _, right) => {
+            is_side_effect_free(&left.node) && is_side_effect_free(&right.node)
+        }
+        AstNode::UnaryOp(_, expr) => is_side_effect_free(&expr.node),
+        AstNode::ListAccess(base, index) => {
+            is_side_effect_free(&base.node) && is_side_effect_free(&index.node)
+        }
+        AstNode::Length(expr) => is_side_effect_free(&expr.node),
+        _ => false,
+    }
+}
+
+/// Fast path for `name[i]`, `name[i][j]`, ...: select the element inside the
+/// container where it lives, instead of cloning the whole container once per
+/// index level.
+///
+/// Returns `None` when the access does not qualify and the general path should
+/// run. It requires every index expression to be side-effect free, because the
+/// general path snapshots the container before evaluating them and this does
+/// not.
+fn eval_indexed_read_in_place(
+    list: &Spanned,
+    index: &Spanned,
+    env: &Rc<RefCell<Environment>>,
+    span: Span,
+    debug: bool,
+) -> Option<EvalResult> {
+    // `name[i]` is by far the most common shape and is worth keeping free of
+    // the bookkeeping (and heap traffic) the general chain below needs.
+    if let AstNode::Identifier(name) = &list.node {
+        if !is_side_effect_free(&index.node) {
+            return None;
+        }
+        if let Some(err) = undefined_variable_error(name, list.span, env) {
+            return Some(Err(err));
+        }
+        let index_val = match evaluate_node(index, Rc::clone(env), debug) {
+            Ok(value) => value,
+            Err(interruption) => return Some(Err(interruption)),
+        };
+        let borrowed = env.borrow();
+        return borrowed.with_var(name, |value| index_value(value, &index_val, span, env));
+    }
+
+    let mut steps: Vec<(&Spanned, Span)> = vec![(index, span)];
+    let mut current = list;
+    let (name, name_span) = loop {
+        match &current.node {
+            AstNode::Identifier(name) => break (name, current.span),
+            AstNode::ListAccess(base, base_index) => {
+                steps.push((base_index, current.span));
+                current = base;
+            }
+            _ => return None,
+        }
+    };
+    steps.reverse();
+    if !steps
+        .iter()
+        .all(|(expr, _)| is_side_effect_free(&expr.node))
+    {
+        return None;
+    }
+    if let Some(err) = undefined_variable_error(name, name_span, env) {
+        return Some(Err(err));
+    }
+
+    let mut evaluated: Vec<(Value, Span)> = Vec::with_capacity(steps.len());
+    for (position, (expr, step_span)) in steps.iter().enumerate() {
+        match evaluate_node(expr, Rc::clone(env), debug) {
+            Ok(value) => evaluated.push((value, *step_span)),
+            Err(interruption) => return Some(Err(interruption)),
+        }
+        if position + 1 < steps.len() {
+            let borrowed = env.borrow();
+            let checked =
+                borrowed.with_var(name, |value| check_index_prefix(value, &evaluated, env));
+            drop(borrowed);
+            if let Some(Err(interruption)) = checked {
+                return Some(Err(interruption));
+            }
+        }
+    }
+    let borrowed = env.borrow();
+    borrowed.with_var(name, |value| index_chain(value, &evaluated, env))
+}
+
+/// The general path evaluates the base of an access first, so an unbound name
+/// has to be reported before any index expression runs.
+fn undefined_variable_error(
+    name: &str,
+    span: Span,
+    env: &Rc<RefCell<Environment>>,
+) -> Option<Interruption> {
+    if env.borrow().with_var(name, |_| ()).is_some() {
+        return None;
+    }
+    Some(runtime_err(
+        format!("Undefined variable: {}", name),
+        span,
+        env,
+    ))
+}
+
+/// Evaluate `expr` and hand the result to `f` by reference, skipping the copy
+/// when the expression is nothing but a variable name.
+///
+/// In that case `f` runs while the owning scope is immutably borrowed, so it
+/// must not evaluate anything that could mutate a scope.
+fn with_value<R>(
+    expr: &Spanned,
+    env: &Rc<RefCell<Environment>>,
+    debug: bool,
+    f: impl FnOnce(&Value) -> R,
+) -> Result<R, Interruption> {
+    if let AstNode::Identifier(name) = &expr.node {
+        let borrowed = env.borrow();
+        return match borrowed.with_var(name, f) {
+            Some(result) => Ok(result),
+            None => {
+                drop(borrowed);
+                Err(runtime_err(
+                    format!("Undefined variable: {}", name),
+                    expr.span,
+                    env,
+                ))
+            }
+        };
+    }
+    let value = evaluate_node(expr, Rc::clone(env), debug)?;
+    Ok(f(&value))
+}
+
+/// Write `new_val` into `container` at the nested location named by `path`,
+/// which is ordered from the root container outward, descending in place.
+fn set_in_path(container: &mut Value, path: &[Value], new_val: Value) -> Result<(), String> {
     let (index, rest) = path
         .split_first()
         .ok_or_else(|| "Invalid list assignment target".to_string())?;
     if rest.is_empty() {
-        return container_set(container, index.clone(), new_val);
+        return container_set(container, index, new_val);
     }
-    let inner = container_get(&container, index)?;
-    let updated_inner = set_in_path(inner, rest, new_val)?;
-    container_set(container, index.clone(), updated_inner)
+    let inner = container_get_mut(container, index)?;
+    set_in_path(inner, rest, new_val)
 }
 
 /// Assign into `target[index_val]`, where `target` is either a variable or
-/// itself an indexed access. Nested paths of any depth are rebuilt from the
-/// inside out and written back to the variable at the root of the path. Every
-/// index expression along the path is evaluated exactly once, so indices with
-/// side effects (a procedure call, RANDOM, INPUT) read and write the same slot.
+/// itself an indexed access. Nested paths of any depth are followed in place
+/// from the variable at the root of the path. Every index expression along the
+/// path is evaluated exactly once, so indices with side effects (a procedure
+/// call, RANDOM, INPUT) read and write the same slot.
+///
+/// The index and the assigned value are both fully evaluated before the root
+/// container is borrowed mutably, which is what lets `a[i] <- a[j]` work.
 fn assign_indexed(
     target: &Spanned,
     index_val: Value,
@@ -1110,20 +2122,18 @@ fn assign_indexed(
     };
     path.reverse();
 
-    let container = match env.borrow().get(&name) {
-        Some(value) if matches!(value, Value::List(_) | Value::Dictionary(_)) => value,
-        _ => {
-            return Err(runtime_err(
-                format!("Variable {} is not a list or dictionary", name),
-                span,
-                env,
-            ));
+    let not_a_container = || format!("Variable {} is not a list or dictionary", name);
+    let outcome = env.borrow_mut().with_var_mut(&name, |container| {
+        if !matches!(container, Value::List(_) | Value::Dictionary(_)) {
+            return Err(not_a_container());
         }
-    };
-    let updated =
-        set_in_path(container, &path, new_val).map_err(|msg| runtime_err(msg, span, env))?;
-    env.borrow_mut().set(name, updated);
-    Ok(())
+        set_in_path(container, &path, new_val)
+    });
+    match outcome {
+        Some(Ok(())) => Ok(()),
+        Some(Err(msg)) => Err(runtime_err(msg, span, env)),
+        None => Err(runtime_err(not_a_container(), span, env)),
+    }
 }
 
 // skipcq: RS-R1000
@@ -1136,12 +2146,6 @@ fn eval_builtin(
 ) -> Option<EvalResult> {
     match name {
         "SLEEP" => Some(eval_builtin_sleep(args, env, span, debug)),
-        "CONCAT" => Some(eval_builtin_concat(args, env, span, debug)),
-        "SUBSTRING" => Some(eval_builtin_substring(args, env, span, debug)),
-        "LENGTH" => Some(eval_builtin_length(args, env, span, debug)),
-        "REMOVE" => Some(eval_builtin_remove(args, env, span, debug)),
-        "APPEND" => Some(eval_builtin_append(args, env, span, debug)),
-        "INSERT" => Some(eval_builtin_insert(args, env, span, debug)),
         "ABS" => Some(eval_builtin_abs(args, env, span, debug)),
         "CEIL" => Some(eval_builtin_ceil(args, env, span, debug)),
         "FLOOR" => Some(eval_builtin_floor(args, env, span, debug)),
@@ -1213,7 +2217,13 @@ fn eval_builtin(
         "HYPOT" => Some(eval_builtin_hypot(args, env, span, debug)),
         "MIN" => Some(eval_builtin_min(args, env, span, debug)),
         "MAX" => Some(eval_builtin_max(args, env, span, debug)),
-        "EXIT" => std::process::exit(0),
+        // `process::exit` runs no destructors, so a buffered stream sink would
+        // be dropped on the floor along with everything the program printed.
+        // Push it out before leaving.
+        "EXIT" => {
+            env.borrow().sink().borrow_mut().flush();
+            std::process::exit(0)
+        }
         "ROUND" => Some(eval_builtin_round(args, env, span, debug)),
         "SPLIT" => Some(eval_builtin_split(args, env, span, debug)),
         "TRIM" => Some(eval_builtin_trim(args, env, span, debug)),
@@ -1252,7 +2262,10 @@ fn eval_builtin_sleep(
     if args.len() != 1 {
         return Err(runtime_err("SLEEP requires one argument", span, env));
     }
-    io::stdout().flush().unwrap();
+    // Drain whatever is pending before we stall the program, so a progress
+    // message printed just before a SLEEP is on screen during the sleep.
+    env.borrow().sink().borrow_mut().flush();
+    let _ = io::stdout().flush();
     #[cfg(any(not(target_arch = "wasm32"), feature = "wasi"))]
     {
         let seconds = evaluate_node(&args[0], Rc::clone(env), debug)?;
@@ -1277,127 +2290,6 @@ fn eval_builtin_sleep(
         );
         return Ok(Value::Unit);
     }
-}
-
-fn eval_builtin_concat(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 2 {
-        return Err(runtime_err("CONCAT requires two arguments", span, env));
-    }
-    let s1 = evaluate_node(&args[0], Rc::clone(env), debug)?;
-    let s2 = evaluate_node(&args[1], Rc::clone(env), debug)?;
-    match (s1, s2) {
-        (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-        _ => Err(runtime_err("CONCAT requires string arguments", span, env)),
-    }
-}
-
-fn eval_builtin_substring(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 3 {
-        return Err(runtime_err("SUBSTRING requires three arguments", span, env));
-    }
-    let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
-    let start_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
-    let end_val = evaluate_node(&args[2], Rc::clone(env), debug)?;
-    if let (Value::String(s), Value::Integer(start), Value::Integer(end)) =
-        (str_val, start_val, end_val)
-    {
-        let start_idx = &start - BigInt::one();
-        let end_idx = &end - BigInt::one();
-        match (start_idx.to_usize(), end_idx.to_usize()) {
-            (Some(si), Some(ei))
-                if !start_idx.is_negative() && end_idx >= start_idx && ei < s.len() =>
-            {
-                Ok(Value::String(s[si..=ei].to_string()))
-            }
-            _ => Err(runtime_err("Invalid substring indices", span, env)),
-        }
-    } else {
-        Err(runtime_err("Invalid substring arguments", span, env))
-    }
-}
-
-fn eval_builtin_length(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 1 {
-        return Err(runtime_err("LENGTH requires one argument", span, env));
-    }
-    let arg = evaluate_node(&args[0], Rc::clone(env), debug)?;
-    match arg {
-        Value::List(elements) => Ok(Value::Integer(BigInt::from(elements.len()))),
-        Value::String(s) => Ok(Value::Integer(BigInt::from(s.len()))),
-        Value::Dictionary(entries) => Ok(Value::Integer(BigInt::from(entries.len()))),
-        _ => Err(runtime_err(
-            "LENGTH requires a list, string, or dictionary argument",
-            span,
-            env,
-        )),
-    }
-}
-
-fn eval_builtin_remove(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 2 {
-        return Err(runtime_err("REMOVE requires two arguments", span, env));
-    }
-    let synth = Spanned::new(
-        AstNode::Remove(Box::new(args[0].clone()), Box::new(args[1].clone())),
-        span,
-    );
-    evaluate_node(&synth, Rc::clone(env), debug)
-}
-
-fn eval_builtin_append(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 2 {
-        return Err(runtime_err("APPEND requires two arguments", span, env));
-    }
-    let synth = Spanned::new(
-        AstNode::Append(Box::new(args[0].clone()), Box::new(args[1].clone())),
-        span,
-    );
-    evaluate_node(&synth, Rc::clone(env), debug)
-}
-
-fn eval_builtin_insert(
-    args: &[Spanned],
-    env: &Rc<RefCell<Environment>>,
-    span: Span,
-    debug: bool,
-) -> EvalResult {
-    if args.len() != 3 {
-        return Err(runtime_err("INSERT requires three arguments", span, env));
-    }
-    let synth = Spanned::new(
-        AstNode::Insert(
-            Box::new(args[0].clone()),
-            Box::new(args[1].clone()),
-            Box::new(args[2].clone()),
-        ),
-        span,
-    );
-    evaluate_node(&synth, Rc::clone(env), debug)
 }
 
 fn eval_builtin_abs(
@@ -2013,8 +2905,12 @@ fn eval_builtin_find(
     let str_val = evaluate_node(&args[0], Rc::clone(env), debug)?;
     let text_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
     match (str_val, text_val) {
+        // The result is a character position so it can be fed straight back
+        // into `s[i]` or `SUBSTRING`, which are character based too.
         (Value::String(s), Value::String(t)) => match s.find(&t) {
-            Some(index) => Ok(Value::Integer(BigInt::from(index + 1))),
+            Some(byte_idx) => Ok(Value::Integer(BigInt::from(
+                str_char_len(&s[..byte_idx]) + 1,
+            ))),
             None => Ok(Value::Integer(BigInt::from(-1))),
         },
         _ => Err(runtime_err("FIND requires two string arguments", span, env)),
@@ -2169,7 +3065,7 @@ fn eval_builtin_dictionary(
     if !args.is_empty() {
         return Err(runtime_err("DICTIONARY takes no arguments", span, env));
     }
-    Ok(Value::Dictionary(Vec::new()))
+    Ok(Value::Dictionary(Dict::new()))
 }
 
 fn eval_builtin_keys(
@@ -2181,17 +3077,12 @@ fn eval_builtin_keys(
     if args.len() != 1 {
         return Err(runtime_err("KEYS requires one argument", span, env));
     }
-    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
-    match dict {
-        Value::Dictionary(entries) => Ok(Value::List(
-            entries.iter().map(|(k, _)| key_to_value(k)).collect(),
-        )),
-        _ => Err(runtime_err(
-            "KEYS requires a dictionary argument",
-            span,
-            env,
-        )),
-    }
+    with_value(&args[0], env, debug, |value| match value {
+        Value::Dictionary(entries) => Some(entries.keys().map(key_to_value).collect()),
+        _ => None,
+    })?
+    .map(Value::List)
+    .ok_or_else(|| runtime_err("KEYS requires a dictionary argument", span, env))
 }
 
 fn eval_builtin_values(
@@ -2203,17 +3094,12 @@ fn eval_builtin_values(
     if args.len() != 1 {
         return Err(runtime_err("VALUES requires one argument", span, env));
     }
-    let dict = evaluate_node(&args[0], Rc::clone(env), debug)?;
-    match dict {
-        Value::Dictionary(entries) => {
-            Ok(Value::List(entries.into_iter().map(|(_, v)| v).collect()))
-        }
-        _ => Err(runtime_err(
-            "VALUES requires a dictionary argument",
-            span,
-            env,
-        )),
-    }
+    with_value(&args[0], env, debug, |value| match value {
+        Value::Dictionary(entries) => Some(entries.values().cloned().collect()),
+        _ => None,
+    })?
+    .map(Value::List)
+    .ok_or_else(|| runtime_err("VALUES requires a dictionary argument", span, env))
 }
 
 fn eval_builtin_haskey(
@@ -2232,7 +3118,7 @@ fn eval_builtin_haskey(
             // A value that could never be a key simply is not present, so the
             // guard form `IF HASKEY(d, k)` stays usable for any k.
             Err(_) => Ok(Value::Boolean(false)),
-            Ok(key) => Ok(Value::Boolean(dict_get(&entries, &key).is_some())),
+            Ok(key) => Ok(Value::Boolean(entries.contains_key(&key))),
         },
         _ => Err(runtime_err(
             "HASKEY requires a dictionary argument",
@@ -2267,7 +3153,7 @@ fn eval_builtin_getkey(
         Err(_) if args.len() == 3 => return evaluate_node(&args[2], Rc::clone(env), debug),
         Err(msg) => return Err(runtime_err(msg, span, env)),
     };
-    match dict_get(&entries, &key) {
+    match entries.get(&key) {
         Some(value) => Ok(value.clone()),
         None if args.len() == 3 => evaluate_node(&args[2], Rc::clone(env), debug),
         None => Err(runtime_err(
@@ -2296,19 +3182,33 @@ fn eval_builtin_setkey(
     };
     let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
     let new_val = evaluate_node(&args[2], Rc::clone(env), debug)?;
-    let current = env.borrow().get(name);
-    let Some(Value::Dictionary(mut entries)) = current else {
+    if !env
+        .borrow()
+        .with_var(name, |value| matches!(value, Value::Dictionary(_)))
+        .unwrap_or(false)
+    {
         return Err(runtime_err(
             format!("Variable {} is not a dictionary", name),
             span,
             env,
         ));
-    };
+    }
     let key = value_to_key(&key_val).map_err(|msg| runtime_err(msg, span, env))?;
-    dict_insert(&mut entries, key, new_val.clone());
-    env.borrow_mut()
-        .set(name.clone(), Value::Dictionary(entries));
-    Ok(new_val)
+    let outcome = env.borrow_mut().with_var_mut(name, |value| {
+        let Value::Dictionary(entries) = value else {
+            return Err(());
+        };
+        entries.insert(key, new_val.clone());
+        Ok(())
+    });
+    match outcome {
+        Some(Ok(())) => Ok(new_val),
+        _ => Err(runtime_err(
+            format!("Variable {} is not a dictionary", name),
+            span,
+            env,
+        )),
+    }
 }
 
 fn eval_builtin_removekey(
@@ -2328,15 +3228,18 @@ fn eval_builtin_removekey(
         ));
     };
     let key_val = evaluate_node(&args[1], Rc::clone(env), debug)?;
-    let current = env.borrow().get(name);
-    let Some(Value::Dictionary(entries)) = current else {
+    if !env
+        .borrow()
+        .with_var(name, |value| matches!(value, Value::Dictionary(_)))
+        .unwrap_or(false)
+    {
         return Err(runtime_err(
             format!("Variable {} is not a dictionary", name),
             span,
             env,
         ));
-    };
-    dict_remove_entry(name, entries, &key_val, env, span)
+    }
+    dict_remove_entry(name, &key_val, env, span)
 }
 
 fn eval_single_num_fn(
@@ -2468,6 +3371,13 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
                 Ok(Value::Float(a / b))
             }
         }
+        (Value::Float(a), BinaryOperator::Mod, Value::Float(b)) => {
+            if *b == 0.0 {
+                Err("Modulo by zero".to_string())
+            } else {
+                Ok(Value::Float(a % b))
+            }
+        }
 
         // Mixed Integer/Float arithmetic
         (Value::Integer(a), op, Value::Float(b)) if op.is_arithmetic() => {
@@ -2522,8 +3432,8 @@ fn evaluate_binary_op(left: &Value, op: &BinaryOperator, right: &Value) -> Resul
         }
         (Value::Dictionary(a), BinaryOperator::Add, Value::Dictionary(b)) => {
             let mut result = a.clone();
-            for (key, value) in b {
-                dict_insert(&mut result, key.clone(), value.clone());
+            for (key, value) in b.iter() {
+                result.insert(key.clone(), value.clone());
             }
             Ok(Value::Dictionary(result))
         }
@@ -2551,9 +3461,8 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         }
         (Value::Dictionary(a), Value::Dictionary(b)) => {
             a.len() == b.len()
-                && a.iter().all(|(key, value)| {
-                    dict_get(b, key).is_some_and(|other| values_equal(value, other))
-                })
+                && a.iter()
+                    .all(|(key, value)| b.get(key).is_some_and(|other| values_equal(value, other)))
         }
         (Value::Null, Value::Null) | (Value::Unit, Value::Unit) => true,
         _ => false,

@@ -780,3 +780,175 @@ fn test_foreach_on_dictionary_is_allowed() {
 fn test_length_on_dictionary_is_allowed() {
     assert_output("DISPLAY(LENGTH({\"a\": 1, \"b\": 2}))", "2");
 }
+
+// ---------------------------------------------------------------------------
+// Boolean operators type-check both operands
+// ---------------------------------------------------------------------------
+
+/// AND/OR used to inspect only the RIGHT operand's type. A non-boolean on the
+/// left silently took the "not false" / "not true" branch, so `1 AND TRUE`
+/// evaluated to true instead of being rejected.
+#[test]
+fn test_and_left_operand_must_be_boolean() {
+    for source in [
+        "DISPLAY(1 AND TRUE)",
+        "DISPLAY(1 AND FALSE)",
+        r#"DISPLAY("x" AND TRUE)"#,
+        "DISPLAY(0 AND TRUE)",
+        "DISPLAY([1] AND TRUE)",
+        "DISPLAY(1.5 AND TRUE)",
+    ] {
+        let err = get_error(source);
+        assert!(
+            err.contains("Left operand of AND must be boolean"),
+            "{source}: {err}"
+        );
+    }
+}
+
+#[test]
+fn test_or_left_operand_must_be_boolean() {
+    for source in [
+        "DISPLAY(1 OR TRUE)",
+        "DISPLAY(1 OR FALSE)",
+        r#"DISPLAY("x" OR FALSE)"#,
+        "DISPLAY(0 OR FALSE)",
+        "DISPLAY([1] OR FALSE)",
+    ] {
+        let err = get_error(source);
+        assert!(
+            err.contains("Left operand of OR must be boolean"),
+            "{source}: {err}"
+        );
+    }
+}
+
+#[test]
+fn test_and_or_right_operand_still_checked() {
+    let err = get_error("DISPLAY(TRUE AND 1)");
+    assert!(
+        err.contains("Right operand of AND must be boolean"),
+        "{err}"
+    );
+    let err = get_error("DISPLAY(FALSE OR 1)");
+    assert!(err.contains("Right operand of OR must be boolean"), "{err}");
+}
+
+#[test]
+fn test_and_or_still_short_circuit() {
+    // FALSE AND <error> and TRUE OR <error> must not evaluate the right side.
+    assert_output("DISPLAY(FALSE AND (1 / 0 = 0))", "false");
+    assert_output("DISPLAY(TRUE OR (1 / 0 = 0))", "true");
+    assert_output("DISPLAY(FALSE AND 1)", "false");
+    assert_output("DISPLAY(TRUE OR 1)", "true");
+}
+
+// ---------------------------------------------------------------------------
+// Runtime error messages on the string paths (previously unasserted)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_substring_argument_errors() {
+    let err = get_error("DISPLAY(SUBSTRING(5, 1, 2))");
+    assert!(err.contains("Invalid substring arguments"), "{err}");
+    let err = get_error(r#"DISPLAY(SUBSTRING("abc", "1", 2))"#);
+    assert!(err.contains("Invalid substring arguments"), "{err}");
+}
+
+#[test]
+fn test_find_argument_errors() {
+    let err = get_error(r#"DISPLAY(FIND("abc", 1))"#);
+    assert!(err.contains("FIND requires two string arguments"), "{err}");
+    let err = get_error(r#"DISPLAY(FIND("abc"))"#);
+    assert!(err.contains("FIND requires two arguments"), "{err}");
+}
+
+#[test]
+fn test_concat_argument_errors() {
+    let err = get_error(r#"DISPLAY(CONCAT("abc", 1))"#);
+    assert!(err.contains("CONCAT requires string arguments"), "{err}");
+}
+
+#[test]
+fn test_length_argument_errors() {
+    let err = get_error("DISPLAY(LENGTH(5))");
+    assert!(
+        err.contains("LENGTH requires a list, string, or dictionary argument"),
+        "{err}"
+    );
+}
+
+#[test]
+fn test_string_index_below_one_error() {
+    let err = get_error("s <- \"abc\"\nDISPLAY(s[0])");
+    assert!(
+        err.contains("String index out of bounds: index cannot be less than 1"),
+        "{err}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Output produced inside a CATCH block
+// ---------------------------------------------------------------------------
+
+/// A CATCH block that DISPLAYs and then RETURNs used to have its output
+/// silently dropped in capture mode: the RETURN propagated out of the TRY/CATCH
+/// arm before the arm could copy the catch scope's private output buffer up
+/// into its parent, so "caught" was lost and only "after" came back. (The CLI
+/// never showed the bug, because DISPLAY also printed directly.) Every scope
+/// now shares one output sink, so there is no copy-up left to skip.
+#[test]
+fn test_catch_that_displays_then_returns_keeps_its_output() {
+    assert_output(
+        "PROCEDURE f() {\n\
+         \x20   TRY {\n\
+         \x20       DISPLAY(nope)\n\
+         \x20   } CATCH (e) {\n\
+         \x20       DISPLAY(\"caught\")\n\
+         \x20       RETURN (1)\n\
+         \x20   }\n\
+         }\n\
+         f()\n\
+         DISPLAY(\"after\")",
+        "caught\nafter",
+    );
+}
+
+/// The same loss one level further out: a CATCH that DISPLAYs and RETURNs from
+/// the top level of the program.
+#[test]
+fn test_top_level_catch_that_displays_then_returns_keeps_its_output() {
+    assert_output(
+        "DISPLAY(\"before\")\n\
+         TRY {\n\
+         \x20   DISPLAY(nope)\n\
+         } CATCH (e) {\n\
+         \x20   DISPLAY(\"caught\")\n\
+         \x20   RETURN (1)\n\
+         }",
+        "before\ncaught",
+    );
+}
+
+/// Output written by a procedure that RETURNs from inside a CATCH nested in a
+/// loop still lands in order relative to the caller's own output.
+#[test]
+fn test_catch_output_ordering_across_procedure_boundary() {
+    assert_output(
+        "PROCEDURE f(i) {\n\
+         \x20   TRY {\n\
+         \x20       DISPLAY(nope)\n\
+         \x20   } CATCH (e) {\n\
+         \x20       DISPLAY(\"c\" + TOSTRING(i))\n\
+         \x20       RETURN (i)\n\
+         \x20   }\n\
+         }\n\
+         DISPLAY(\"start\")\n\
+         FOR EACH i IN [1, 2, 3] {\n\
+         \x20   DISPLAY(\"a\" + TOSTRING(i))\n\
+         \x20   f(i)\n\
+         }\n\
+         DISPLAY(\"end\")",
+        "start\na1\nc1\na2\nc2\na3\nc3\nend",
+    );
+}

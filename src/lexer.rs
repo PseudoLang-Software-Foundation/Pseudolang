@@ -2,12 +2,9 @@ use crate::error::Span;
 use num_bigint::BigInt;
 
 #[derive(Debug, PartialEq, Clone)]
-#[allow(dead_code)]
 pub enum Token {
-    Unknown,
     Identifier(String),
 
-    Assignment,
     Assign,
     Display(Option<Box<Token>>),
     DisplayInline,
@@ -32,18 +29,13 @@ pub enum Token {
     If,
     Else,
     Repeat,
-    RepeatUntil,
     Until,
     Times,
 
-    ListCreate(Vec<Token>),
-    ListAssign,
-    ListAccess,
     ListInsert,
     ListAppend,
     ListRemove,
     ListLength,
-    ForEach,
 
     Procedure,
     Return,
@@ -65,8 +57,6 @@ pub enum Token {
     CloseBracket,
     Comma,
     Colon,
-    Indent,
-    Dedent,
     Newline,
     OpenBrace,
     CloseBrace,
@@ -81,8 +71,6 @@ pub enum Token {
     Concat,
     Import,
 
-    True,
-    False,
     Random,
     Sort,
     Try,

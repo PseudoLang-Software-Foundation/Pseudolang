@@ -25,15 +25,20 @@ pub fn execute_code(
         println!("\n=== Starting Execution ===");
     }
 
-    let output = match interpreter::run_with_source(ast, source_code, args) {
-        Ok(output) => output,
-        Err(e) => return Err(e.format(source_code)),
+    // `return_output` now actually selects the sink. Callers that want the text
+    // back capture it into a `String`; callers that do not (the CLI) stream
+    // straight to stdout instead of holding the whole run's output in RAM,
+    // and get an empty `String` back.
+    let mode = if return_output {
+        interpreter::OutputMode::Capture
+    } else {
+        interpreter::OutputMode::Stdout
     };
 
-    if !return_output {
-        // placeholder for now
+    match interpreter::run_with_mode(ast, source_code, args, mode, debug) {
+        Ok(output) => Ok(output),
+        Err(e) => Err(e.format(source_code)),
     }
-    Ok(output)
 }
 
 #[allow(dead_code)]

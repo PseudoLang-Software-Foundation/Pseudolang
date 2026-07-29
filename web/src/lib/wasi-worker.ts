@@ -7,6 +7,7 @@ import {
   WASI,
   wasi as wasiDefs,
 } from "@bjorn3/browser_wasi_shim";
+import { SIGNAL_BYTES, STDIN_BUFFER_BYTES } from "./wasi-protocol";
 
 let signalArray: Int32Array;
 let dataArray: Uint8Array;
@@ -64,7 +65,7 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (msg.type === "init") {
     signalArray = new Int32Array(msg.sab, 0, 2);
-    dataArray = new Uint8Array(msg.sab, 8, 4096);
+    dataArray = new Uint8Array(msg.sab, SIGNAL_BYTES, STDIN_BUFFER_BYTES);
     self.postMessage({ type: "ready" });
     return;
   }

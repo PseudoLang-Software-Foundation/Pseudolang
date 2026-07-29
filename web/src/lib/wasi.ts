@@ -1,30 +1,79 @@
 import type { VirtualFS } from "./filesystem";
+import { SAB_BYTES, SIGNAL_BYTES, STDIN_BUFFER_BYTES } from "./wasi-protocol";
 
 const HAS_SAB = typeof SharedArrayBuffer !== "undefined";
-const SAB_SIZE = 8 + 4096;
 
 let worker: Worker | null = null;
 let sab: SharedArrayBuffer | null = null;
 let signalArray: Int32Array | null = null;
 let dataArray: Uint8Array | null = null;
 
+interface ActiveRun {
+  onStdout: (text: string) => void;
+  onStderr: (text: string) => void;
+  onStdinRequest: () => void;
+  settle: (code: number) => void;
+}
+
+let activeRun: ActiveRun | null = null;
+
 function ensureWorker(): Worker {
   if (worker) return worker;
-  sab = new SharedArrayBuffer(SAB_SIZE);
+  sab = new SharedArrayBuffer(SAB_BYTES);
   signalArray = new Int32Array(sab, 0, 2);
-  dataArray = new Uint8Array(sab, 8, 4096);
-  worker = new Worker(new URL("./wasi-worker.ts", import.meta.url), {
+  dataArray = new Uint8Array(sab, SIGNAL_BYTES, STDIN_BUFFER_BYTES);
+  const w = new Worker(new URL("./wasi-worker.ts", import.meta.url), {
     type: "module",
   });
-  worker.postMessage({ type: "init", sab });
-  return worker;
+  // Installed once for the worker's lifetime and dispatched through
+  // `activeRun`. Reassigning `onmessage` per run dropped the previous run's
+  // handler on the floor: a superseded run's promise never settled (leaving its
+  // awaiting caller and closure pinned forever) and its "exit" message was
+  // delivered to whichever run happened to be current.
+  w.onmessage = (e: MessageEvent) => {
+    const run = activeRun;
+    if (!run) return;
+    switch (e.data.type) {
+      case "stdout":
+        run.onStdout(e.data.text);
+        break;
+      case "stderr":
+        run.onStderr(e.data.text);
+        break;
+      case "stdin-request":
+        run.onStdinRequest();
+        break;
+      case "exit":
+        activeRun = null;
+        run.settle(e.data.code);
+        break;
+      case "error":
+        activeRun = null;
+        run.onStderr(e.data.message);
+        run.settle(1);
+        break;
+    }
+  };
+  w.postMessage({ type: "init", sab });
+  worker = w;
+  return w;
 }
 
 export function sendStdinInput(input: string): void {
   if (!signalArray || !dataArray) return;
   const encoded = new TextEncoder().encode(`${input}\n`);
-  const len = Math.min(encoded.length, 4096);
-  dataArray.set(encoded.slice(0, len));
+  let len = encoded.length;
+  if (len > STDIN_BUFFER_BYTES) {
+    // The shared window is fixed size, so an over-long line has to be cut.
+    // Cut back to a UTF-8 code-point boundary so the worker never decodes a
+    // split multi-byte sequence, and reserve the final byte for the newline:
+    // without it the guest blocks forever waiting for end-of-line.
+    len = STDIN_BUFFER_BYTES - 1;
+    while (len > 0 && (encoded[len] & 0b1100_0000) === 0b1000_0000) len--;
+    encoded[len] = 0x0a;
+    len++;
+  }
+  dataArray.set(encoded.subarray(0, len));
   Atomics.store(signalArray, 1, len);
   Atomics.store(signalArray, 0, 2);
   Atomics.notify(signalArray, 0);
@@ -63,26 +112,7 @@ export async function runWasi(
   const w = ensureWorker();
 
   return new Promise((resolve) => {
-    w.onmessage = (e: MessageEvent) => {
-      switch (e.data.type) {
-        case "stdout":
-          onStdout(e.data.text);
-          break;
-        case "stderr":
-          onStderr(e.data.text);
-          break;
-        case "stdin-request":
-          onStdinRequest();
-          break;
-        case "exit":
-          resolve(e.data.code);
-          break;
-        case "error":
-          onStderr(e.data.message);
-          resolve(1);
-          break;
-      }
-    };
+    activeRun = { onStdout, onStderr, onStdinRequest, settle: resolve };
 
     if (signalArray) Atomics.store(signalArray, 0, 0);
 

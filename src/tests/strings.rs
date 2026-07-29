@@ -1,4 +1,4 @@
-use super::{assert_output, run_test};
+use super::{assert_output, get_error, run_test};
 
 #[test]
 fn test_string_operations() {
@@ -478,4 +478,212 @@ fn test_raw_string_no_escape() {
 #[test]
 fn test_replace_no_match() {
     assert_output(r#"DISPLAY(REPLACE("hello", "xyz", "abc"))"#, "hello");
+}
+
+// In-place string self-append (`s <- s + x`, `s <- CONCAT(s, x)`) is a fast
+// path in the interpreter. These pin the semantics it has to keep.
+
+#[test]
+fn test_self_append_builds_the_same_string() {
+    assert_output(
+        r#"
+            s <- ""
+            REPEAT 5 TIMES
+            {
+                s <- s + "x"
+            }
+            DISPLAY(s)
+            DISPLAY(LENGTH(s))
+        "#,
+        "xxxxx\n5",
+    );
+    assert_output(
+        r#"
+            s <- ""
+            REPEAT 4 TIMES
+            {
+                s <- CONCAT(s, "ab")
+            }
+            DISPLAY(s)
+        "#,
+        "abababab",
+    );
+}
+
+#[test]
+fn test_self_append_leaves_the_copied_string_alone() {
+    assert_output(
+        r#"
+            a <- "abc"
+            b <- a
+            b <- b + "d"
+            b <- CONCAT(b, "e")
+            DISPLAY(a)
+            DISPLAY(b)
+        "#,
+        "abc\nabcde",
+    );
+}
+
+#[test]
+fn test_self_append_with_itself_and_with_a_call() {
+    assert_output(
+        r#"
+            d <- "ab"
+            REPEAT 3 TIMES
+            {
+                d <- d + d
+            }
+            DISPLAY(d)
+        "#,
+        "abababababababab",
+    );
+    assert_output(
+        r#"
+            PROCEDURE tag (v)
+            {
+                RETURN "<" + v + ">"
+            }
+            p <- "p"
+            p <- p + tag(p)
+            p <- CONCAT(p, tag("q"))
+            DISPLAY(p)
+        "#,
+        "p<p><q>",
+    );
+}
+
+#[test]
+fn test_prepending_to_a_variable_still_works() {
+    assert_output(
+        r#"
+            t <- "start-"
+            u <- "end"
+            u <- t + u
+            DISPLAY(u)
+        "#,
+        "start-end",
+    );
+}
+
+#[test]
+fn test_self_append_inside_for_each() {
+    assert_output(
+        r#"
+            h <- ""
+            FOR EACH w IN ["a", "b", "c"]
+            {
+                h <- h + w
+            }
+            DISPLAY(h)
+        "#,
+        "abc",
+    );
+    assert_output(
+        r#"
+            it <- "abc"
+            FOR EACH ch IN it
+            {
+                it <- it + ch
+            }
+            DISPLAY(it)
+        "#,
+        "abcabc",
+    );
+}
+
+#[test]
+fn test_self_append_keeps_strings_character_indexed() {
+    assert_output(
+        r#"
+            u <- ""
+            REPEAT 3 TIMES
+            {
+                u <- u + "é"
+            }
+            u <- CONCAT(u, "日本語")
+            DISPLAY(LENGTH(u))
+            DISPLAY(SUBSTRING(u, 4, 6))
+            DISPLAY(u[4])
+            DISPLAY(FIND(u, "日"))
+        "#,
+        "6\n日本語\n日\n4",
+    );
+}
+
+#[test]
+fn test_self_append_is_the_value_of_a_procedure_without_return() {
+    assert_output(
+        r#"
+            PROCEDURE build (v)
+            {
+                acc <- "["
+                acc <- acc + v
+                acc <- acc + "]"
+            }
+            DISPLAY(build("mid"))
+        "#,
+        "[mid]",
+    );
+}
+
+#[test]
+fn test_appending_to_a_global_does_not_escape_the_procedure() {
+    assert_output(
+        r#"
+            g <- "global"
+            PROCEDURE touch ()
+            {
+                g <- g + "-local"
+                DISPLAY(g)
+            }
+            touch()
+            DISPLAY(g)
+        "#,
+        "global-local\nglobal",
+    );
+}
+
+#[test]
+fn test_self_add_on_non_strings_is_unchanged() {
+    assert_output(
+        r#"
+            i <- 0
+            REPEAT 4 TIMES
+            {
+                i <- i + 1
+            }
+            DISPLAY(i)
+            l <- [1, 2]
+            l2 <- l
+            l <- l + [3]
+            DISPLAY(l)
+            DISPLAY(l2)
+        "#,
+        "4\n[1, 2, 3]\n[1, 2]",
+    );
+    assert!(
+        get_error(
+            r#"
+            s <- "abc"
+            REPEAT 2 TIMES
+            {
+                s <- s + 1
+            }
+        "#
+        )
+        .contains("Invalid operation")
+    );
+    assert!(
+        get_error(
+            r#"
+            s <- "abc"
+            REPEAT 2 TIMES
+            {
+                s <- CONCAT(s, 7)
+            }
+        "#
+        )
+        .contains("CONCAT requires string arguments")
+    );
 }

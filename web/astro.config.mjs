@@ -1,7 +1,5 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "astro/config";
-import topLevelAwait from "vite-plugin-top-level-await";
-import wasm from "vite-plugin-wasm";
 
 const cargoToml = readFileSync("../Cargo.toml", "utf-8");
 const versionMatch = cargoToml.match(/^version\s*=\s*"([^"]+)"/m);
@@ -21,7 +19,12 @@ export default defineConfig({
     define: {
       __PSEUDOLANG_VERSION__: JSON.stringify(PSEUDOLANG_VERSION),
     },
-    plugins: [wasm(), topLevelAwait()],
+    // No `vite-plugin-wasm` / `vite-plugin-top-level-await`: the wasm binary is
+    // fetched from `public/` at runtime rather than imported as a module, and
+    // nothing in the graph uses top-level await. Both plugins re-emitted every
+    // chunk through SWC *after* minification, shipping monaco and the app entry
+    // unminified. The default build target (chrome111/firefox114/safari16.4)
+    // supports top-level await natively anyway.
     optimizeDeps: {
       exclude: ["@bjorn3/browser_wasi_shim"],
     },
