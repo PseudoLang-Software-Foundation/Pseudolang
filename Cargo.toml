@@ -4,9 +4,35 @@
 name = "fpli"
 version = "0.9.610"
 edition = "2024"
+rust-version = "1.88"
 description = "A Pseudolang interpreter written in Rust"
 repository = "https://github.com/PseudoLang-Software-Foundation/Pseudolang"
+homepage = "https://pseudo-lang.org/"
+documentation = "https://docs.rs/fpli"
 license = "MIT"
+# Must be set explicitly: Cargo's auto-detection only probes "README.md"/"README.txt"/"README",
+# so this lowercase file would silently be dropped when publishing from a case-sensitive filesystem.
+readme = "readme.md"
+keywords = ["pseudocode", "interpreter", "apcsp", "pseudolang", "language"]
+categories = [
+  "command-line-utilities",
+  "compilers",
+  "parser-implementations",
+  "development-tools",
+]
+# Allowlist: assets/, web/ and extensions/ are ~85% of the repo and are not needed to
+# build (no build.rs, no include_str!/include_bytes!). Cargo.lock must be listed
+# explicitly because `include` replaces the default VCS walk, and `cargo install --locked`
+# needs it. Every pattern is anchored with a leading "/": these are gitignore-style
+# globs, so an unanchored "LICENSE" would also match web/node_modules/**/LICENSE.
+include = [
+  "/src/**/*.rs",
+  "/Cargo.toml",
+  "/Cargo.lock",
+  "/LICENSE",
+  "/readme.md",
+  "/Pseudolang.md",
+]
 
 [lib]
 name = "fpli_lib"
@@ -53,15 +79,6 @@ console_error_panic_hook = { version = "0.1", optional = true }
 chrono = "0.4"
 chrono-tz = "0.10"
 stacker = "0.1"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["winuser"] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-libc = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
