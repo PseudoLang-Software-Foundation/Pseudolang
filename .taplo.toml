@@ -1,0 +1,4 @@
+# Keep `taplo fmt --check` scoped to tracked TOML. Without this, a tree where
+# `cargo package` has run picks up the generated target/package/*/Cargo.toml,
+# which taplo does not consider formatted, and the repo's own format check fails.
+exclude = ["target/**"]
