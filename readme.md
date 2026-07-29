@@ -3,7 +3,7 @@
 </div>
 
 <p align="center">
-    <img src="./assets/Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
+    <img src="https://raw.githubusercontent.com/PseudoLang-Software-Foundation/Pseudolang/main/assets/Pseudolang-Logo.png" alt="Pseudolang Logo" height="200px" width="auto">
 </p>
 
 <div align="center">
@@ -16,23 +16,40 @@
 
 Welcome to Pseudolang! Pseudolang is a simple programming language written in Rust, inspired by College Board's Pseudocode.
 
-This project aims to fully support 64-bit Windows, Linux, and WebAssembly (WASI CLI, wasm-bindgen for browser).
+This project aims to fully support 64-bit Windows, Linux, macOS (Apple Silicon and Intel), and WebAssembly (WASI CLI, wasm-bindgen for browser).
 
 ## Screenshots
 
 <p align="center">
-  <img src="./assets/fib_psl.png" alt="Fibonacci Example in Pseudolang" height="auto" width="auto">
+  <img src="https://raw.githubusercontent.com/PseudoLang-Software-Foundation/Pseudolang/main/assets/fib_psl.png" alt="Fibonacci Example in Pseudolang" height="auto" width="auto">
 </p>
 
 <p align="center">
-  <img src="./assets/web.png" alt="Pseudolang Web Interpreter" height="auto" width="auto">
+  <img src="https://raw.githubusercontent.com/PseudoLang-Software-Foundation/Pseudolang/main/assets/web.png" alt="Pseudolang Web Interpreter" height="auto" width="auto">
 </p>
 
-## Releases
+## Install
 
-Go to **[nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main)** and download the binary for your operating system.
+From [crates.io](https://crates.io/crates/fpli), on any supported platform:
 
-There is also an **installer** for Windows, that you can download in [GitHub releases](https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases).
+```bash
+cargo install fpli
+```
+
+Or download a prebuilt binary from **[nightly releases](https://nightly.link/PseudoLang-Software-Foundation/Pseudolang/workflows/build/main)** or [GitHub releases](https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases). Windows additionally has an **installer**, and Debian/Ubuntu have a `.deb` package.
+
+### macOS
+
+Releases ship `fpli-macos-arm64` (Apple Silicon), `fpli-macos-amd64` (Intel), and `fpli-macos-universal` (both). Download the tarball rather than the bare binary — it preserves the executable bit:
+
+```bash
+curl -LO https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases/latest/download/fpli-macos-universal.tar.gz
+shasum -a 256 -c fpli-macos-universal.tar.gz.sha256   # optional
+tar -xzf fpli-macos-universal.tar.gz
+sudo mv fpli-macos-universal /usr/local/bin/fpli
+```
+
+The binaries are ad-hoc signed but not notarized, so Gatekeeper will quarantine a download made through a browser. Clear it with `xattr -d com.apple.quarantine /usr/local/bin/fpli`, or avoid it entirely by using `curl` or `cargo install`.
 
 ## Use
 
@@ -72,6 +89,9 @@ All recipes live in `jfiles/src/` and are run with [`just`](https://github.com/c
 | `just install`            | Install toolchain deps (cross, wasm-pack, taplo, WASM targets) |
 | `just build`              | Debug build (native)                                           |
 | `just release`            | Release build (native)                                         |
+| `just build-macos`        | macOS arm64 release (macOS host only)                          |
+| `just build-macos-intel`  | macOS x86_64 release (macOS host only)                         |
+| `just build-macos-universal` | macOS universal binary via lipo (macOS host only)           |
 | `just build-wasm`         | Browser WASM via wasm-pack/wasm-bindgen                        |
 | `just build-wasi`         | WASI CLI binary (`wasm32-wasip1`)                              |
 | `just build-all`          | Native release + WASM + WASI + optional cross-compilation      |
@@ -87,12 +107,15 @@ All recipes live in `jfiles/src/` and are run with [`just`](https://github.com/c
 
 ## Build / CI Pipeline
 
-CI is defined in `.github/workflows/build.yml`. On every push it runs tests, then builds four targets in parallel:
+CI is defined in `.github/workflows/build.yml`. On every push it runs tests on Linux and macOS, then builds these targets in parallel:
 
 1. **Windows** (`x86_64-pc-windows-gnu`) -- cross-compiled, plus NSIS installer
-2. **Linux** (`x86_64-unknown-linux-gnu`) -- cross-compiled
-3. **WASM** (`wasm32-unknown-unknown`) -- wasm-pack/wasm-bindgen bundle for browser embedding
-4. **WASI** (`wasm32-wasip1`) -- standalone CLI binary for runtimes like webassembly.sh
+2. **Linux** (`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`) -- cross-compiled, plus `.deb` packages
+3. **macOS** (`aarch64-apple-darwin` and `x86_64-apple-darwin`) -- built on a macOS runner, then combined into a universal binary with `lipo`
+4. **WASM** (`wasm32-unknown-unknown`) -- wasm-pack/wasm-bindgen bundle for browser embedding
+5. **WASI** (`wasm32-wasip1`) -- standalone CLI binary for runtimes like webassembly.sh
+
+macOS cannot be cross-compiled with `cross` (there are no darwin images), so it builds natively on a `macos-15` runner.
 
 Pushing a `vX.Y.Z` tag triggers a GitHub Release with all artifacts attached.
 
@@ -109,7 +132,7 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 <details>
 <summary>Functionality</summary>
 
-- [ ] Dictionaries
+- [x] Dictionaries
 - [ ] Networking
 - [ ] File IO
 - [ ] System integration (terminal commands, process management, environment variables)
