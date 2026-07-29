@@ -18,14 +18,20 @@ env:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.os }}
 
       - name: Run Tests
         run: cargo test --verbose
@@ -33,8 +39,9 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-pc-windows-gnu
@@ -43,6 +50,10 @@ jobs:
             kind: native
           - target: aarch64-unknown-linux-gnu
             kind: native
+          - target: macos-universal
+            kind: darwin
+            os: macos-15
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
           - target: wasm32-unknown-unknown
             kind: wasm
           - target: wasm32-wasip1
@@ -53,7 +64,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets || matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -89,6 +100,46 @@ jobs:
             cp target/${{ matrix.target }}/release/fpli dist/release/fpli-linux-arm64
             chmod +x dist/release/fpli-linux-arm64
           fi
+
+      # --- macOS builds ---
+      # cross has no darwin images, so these run natively on a macos runner.
+
+      - name: Build macOS arm64
+        if: matrix.kind == 'darwin'
+        run: cargo build --release --target aarch64-apple-darwin --features native
+
+      - name: Build macOS x86_64
+        if: matrix.kind == 'darwin'
+        run: cargo build --release --target x86_64-apple-darwin --features native
+
+      - name: Prepare macOS Artifacts
+        if: matrix.kind == 'darwin'
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          cp target/aarch64-apple-darwin/release/fpli dist/release/fpli-macos-arm64
+          cp target/x86_64-apple-darwin/release/fpli dist/release/fpli-macos-amd64
+          lipo -create \
+            dist/release/fpli-macos-arm64 \
+            dist/release/fpli-macos-amd64 \
+            -output dist/release/fpli-macos-universal
+          # lipo copies each slice verbatim, leaving the fat container without a
+          # valid signature. arm64 macOS can refuse to exec a Mach-O whose
+          # signature is missing or invalidated, so re-sign ad-hoc.
+          codesign -s - -f dist/release/fpli-macos-universal
+          chmod +x dist/release/fpli-macos-arm64 dist/release/fpli-macos-amd64 dist/release/fpli-macos-universal
+          lipo -info dist/release/fpli-macos-universal
+          codesign -dv dist/release/fpli-macos-universal
+          # Smoke-test the universal binary actually runs on the arm64 runner.
+          dist/release/fpli-macos-universal --version
+          # upload-artifact strips the executable bit, so the tarball is the real
+          # deliverable. COPYFILE_DISABLE stops bsdtar emitting AppleDouble junk.
+          cd dist/release
+          for f in fpli-macos-arm64 fpli-macos-amd64 fpli-macos-universal; do
+            COPYFILE_DISABLE=1 tar -czf "$f.tar.gz" "$f"
+            shasum -a 256 "$f.tar.gz" > "$f.tar.gz.sha256"
+          done
+          ls -l
 
       # --- Debian package ---
 
@@ -268,11 +319,20 @@ jobs:
           cp artifacts/pseudolang-x86_64-unknown-linux-gnu/pseudolang_*.deb dist/release/ || true
           cp artifacts/pseudolang-aarch64-unknown-linux-gnu/fpli-linux-arm64 dist/release/
           cp artifacts/pseudolang-aarch64-unknown-linux-gnu/pseudolang_*.deb dist/release/ || true
+          # macOS: ship the tarballs (they preserve the exec bit, which
+          # upload-artifact strips) plus the bare universal binary.
+          cp artifacts/pseudolang-macos-universal/fpli-macos-universal dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-arm64.tar.gz dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-amd64.tar.gz dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-universal.tar.gz dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-arm64.tar.gz.sha256 dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-amd64.tar.gz.sha256 dist/release/
+          cp artifacts/pseudolang-macos-universal/fpli-macos-universal.tar.gz.sha256 dist/release/
           cp artifacts/pseudolang-wasm32-wasip1/fpli.wasm dist/release/ || true
           cp artifacts/pseudolang-wasm32-unknown-unknown/fpli_lib-wasm-bindgen.zip dist/release/ || true
           cp artifacts/pseudolang-vscode/pseudolang-vscode.vsix dist/release/ || true
           cd artifacts/pseudolang-website && zip -r ../../dist/release/pseudolang-website.zip . && cd ../..
-          chmod +x dist/release/fpli-linux-amd64 dist/release/fpli-linux-arm64
+          chmod +x dist/release/fpli-linux-amd64 dist/release/fpli-linux-arm64 dist/release/fpli-macos-universal
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -284,6 +344,13 @@ jobs:
             dist/release/fpli-amd64.exe
             dist/release/fpli-linux-amd64
             dist/release/fpli-linux-arm64
+            dist/release/fpli-macos-universal
+            dist/release/fpli-macos-arm64.tar.gz
+            dist/release/fpli-macos-amd64.tar.gz
+            dist/release/fpli-macos-universal.tar.gz
+            dist/release/fpli-macos-arm64.tar.gz.sha256
+            dist/release/fpli-macos-amd64.tar.gz.sha256
+            dist/release/fpli-macos-universal.tar.gz.sha256
             dist/release/pseudolang-setup-amd64.exe
             dist/release/fpli.wasm
             dist/release/fpli_lib-wasm-bindgen.zip

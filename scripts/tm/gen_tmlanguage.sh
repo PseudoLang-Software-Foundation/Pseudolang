@@ -9,39 +9,53 @@ OUTPUT="$ROOT/utils/tm/pseudolang.tmLanguage.json"
 mkdir -p "$(dirname "$OUTPUT")"
 
 # --- Category map ---
-declare -A CATEGORY
+# NOTE: portability. /bin/bash on macOS is 3.2.57, which has no associative
+# arrays (`declare -A`). Categories are therefore plain space-delimited strings
+# in `CAT_<name>` variables, looked up with indirect expansion. To add keywords,
+# just extend the relevant CAT_* list below.
+CATEGORIES="control constant operator math list string io other"
+
 # Control
-for kw in IF ELSE REPEAT UNTIL TIMES FOR EACH IN RETURN PROCEDURE CLASS IMPORT TRY CATCH; do
-  CATEGORY[$kw]=control
-done
+CAT_control="IF ELSE REPEAT UNTIL TIMES FOR EACH IN RETURN PROCEDURE CLASS IMPORT TRY CATCH"
 # Constants
-for kw in TRUE FALSE NULL NAN; do
-  CATEGORY[$kw]=constant
-done
+CAT_constant="TRUE FALSE NULL NAN"
 # Operators (keyword-form only; symbol operators are static in the template)
-for kw in MOD AND OR NOT; do
-  CATEGORY[$kw]=operator
-done
+CAT_operator="MOD AND OR NOT"
 # Math
-for kw in RANDOM ABS CEIL FLOOR POW SQRT SIN COS TAN ASIN ACOS ATAN EXP LOG NLOG LOGTEN LOGTWO GCD FACTORIAL DEGREES RADIANS MIN MAX HYPOT ROUND; do
-  CATEGORY[$kw]=math
-done
+CAT_math="RANDOM ABS CEIL FLOOR POW SQRT SIN COS TAN ASIN ACOS ATAN EXP LOG NLOG LOGTEN LOGTWO GCD FACTORIAL DEGREES RADIANS MIN MAX HYPOT ROUND"
 # List
-for kw in LENGTH SORT APPEND REMOVE INSERT SPLIT RANGE; do
-  CATEGORY[$kw]=list
-done
+CAT_list="LENGTH SORT APPEND REMOVE INSERT SPLIT RANGE"
 # String
-for kw in SUBSTRING CONCAT TRIM REPLACE UPPERCASE LOWERCASE CONTAINS FIND STARTSWITH ENDSWITH; do
-  CATEGORY[$kw]=string
-done
+CAT_string="SUBSTRING CONCAT TRIM REPLACE UPPERCASE LOWERCASE CONTAINS FIND STARTSWITH ENDSWITH"
 # IO / misc
-for kw in DISPLAY DISPLAYINLINE INPUT TOSTRING TONUM EXIT SLEEP TIME TIMESTAMP TIMEZONE TIMEZONES MILLITIME EVAL HASARG GETARG; do
-  CATEGORY[$kw]=io
-done
+CAT_io="DISPLAY DISPLAYINLINE INPUT TOSTRING TONUM EXIT SLEEP TIME TIMESTAMP TIMEZONE TIMEZONES MILLITIME EVAL HASARG GETARG"
+# Catch-all bucket; never populated by hand.
+CAT_other=""
+
+# Return the category a keyword belongs to, or "other" if it is unknown.
+category_of() {
+  local kw="$1" cat varname words
+  for cat in $CATEGORIES; do
+    [ "$cat" = "other" ] && continue
+    varname="CAT_$cat"
+    words="${!varname}"
+    case " $words " in
+    *" $kw "*)
+      printf '%s' "$cat"
+      return 0
+      ;;
+    esac
+  done
+  printf 'other'
+}
 
 # --- Extract keywords from source ---
+# NOTE: portability. BSD grep (macOS) has no -P/PCRE support, so \K and
+# lookaheads are unavailable. perl is present on both macOS and Linux and gives
+# identical semantics: capture the quoted keyword, assert the following "=>" or
+# "|" without consuming it.
 extract_keywords() {
-  grep -oP '"\K[A-Z][A-Z_0-9]+(?="\s*(=>|\|))' "$1" | sort -u
+  perl -nle 'print $1 while /"([A-Z][A-Z_0-9]+)"(?=\s*(?:=>|\|))/g' "$1" | sort -u
 }
 
 lexer_kws=$(extract_keywords "$LEXER")
@@ -49,27 +63,34 @@ interp_kws=$(extract_keywords "$INTERPRETER")
 all_kws=$(printf '%s\n%s\n' "$lexer_kws" "$interp_kws" | sort -u)
 
 # --- Bucket keywords by category ---
-declare -A BUCKETS
-for cat in control constant operator math list string io other; do
-  BUCKETS[$cat]=""
+# Same bash 3.2 constraint as above: one BUCKET_<cat> scalar per category,
+# holding the pipe-delimited alternation used in the generated regexes.
+for cat in $CATEGORIES; do
+  eval "BUCKET_${cat}=''"
 done
+
+# Read the accumulated alternation for a category.
+bucket() {
+  local varname="BUCKET_$1"
+  printf '%s' "${!varname}"
+}
 
 uncategorized=0
 while IFS= read -r kw; do
   [[ -z "$kw" ]] && continue
   # Skip structural tokens that aren't highlighted as keywords
   [[ "$kw" == "COMMENT" || "$kw" == "COMMENTBLOCK" || "$kw" == "NOT=" ]] && continue
-  cat="${CATEGORY[$kw]:-other}"
+  cat="$(category_of "$kw")"
   if [[ "$cat" == "other" ]]; then
-    echo "WARNING: uncategorized keyword '$kw' — add to CATEGORY map in $0" >&2
+    echo "WARNING: uncategorized keyword '$kw' — add to the CAT_* lists in $0" >&2
     uncategorized=$((uncategorized + 1))
   fi
-  if [[ -n "${BUCKETS[$cat]}" ]]; then
-    BUCKETS[$cat]="${BUCKETS[$cat]}|$kw"
+  if [[ -n "$(bucket "$cat")" ]]; then
+    eval "BUCKET_${cat}=\"\${BUCKET_${cat}}|\${kw}\""
   else
-    BUCKETS[$cat]="$kw"
+    eval "BUCKET_${cat}=\"\${kw}\""
   fi
-done <<< "$all_kws"
+done <<<"$all_kws"
 
 # --- Helper: format keyword list as regex ---
 # Input: pipe-delimited keywords. Output: escaped for JSON regex.
@@ -104,22 +125,22 @@ cat > "$OUTPUT" << 'TMHEADER'
 TMHEADER
 
 # Control keywords
-if [[ -n "${BUCKETS[control]}" ]]; then
+if [[ -n "$(bucket control)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Control keywords",
-            "match": "\\\\b(${BUCKETS[control]})\\\\b",
+            "match": "\\\\b($(bucket control))\\\\b",
             "name": "keyword.control.pseudolang"
         },
 EOF
 fi
 
 # Constants
-if [[ -n "${BUCKETS[constant]}" ]]; then
+if [[ -n "$(bucket constant)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Constants",
-            "match": "\\\\b(${BUCKETS[constant]})\\\\b",
+            "match": "\\\\b($(bucket constant))\\\\b",
             "name": "constant.language.pseudolang"
         },
 EOF
@@ -135,66 +156,66 @@ cat >> "$OUTPUT" << 'EOF'
 EOF
 
 # Operators (symbol + keyword)
-if [[ -n "${BUCKETS[operator]}" ]]; then
+if [[ -n "$(bucket operator)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Operators",
-            "match": "(<-|\\\\+|-|\\\\*|/|=|NOT=|>=|<=|>|<|${BUCKETS[operator]})",
+            "match": "(<-|\\\\+|-|\\\\*|/|=|NOT=|>=|<=|>|<|$(bucket operator))",
             "name": "keyword.operator.pseudolang"
         },
 EOF
 fi
 
 # Math functions
-if [[ -n "${BUCKETS[math]}" ]]; then
+if [[ -n "$(bucket math)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Math functions",
-            "match": "\\\\b(${BUCKETS[math]})\\\\b",
+            "match": "\\\\b($(bucket math))\\\\b",
             "name": "support.function.math.pseudolang"
         },
 EOF
 fi
 
 # List functions
-if [[ -n "${BUCKETS[list]}" ]]; then
+if [[ -n "$(bucket list)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "List functions",
-            "match": "\\\\b(${BUCKETS[list]})\\\\b",
+            "match": "\\\\b($(bucket list))\\\\b",
             "name": "support.function.list.pseudolang"
         },
 EOF
 fi
 
 # String functions
-if [[ -n "${BUCKETS[string]}" ]]; then
+if [[ -n "$(bucket string)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "String functions",
-            "match": "\\\\b(${BUCKETS[string]})\\\\b",
+            "match": "\\\\b($(bucket string))\\\\b",
             "name": "support.function.string.pseudolang"
         },
 EOF
 fi
 
 # IO functions
-if [[ -n "${BUCKETS[io]}" ]]; then
+if [[ -n "$(bucket io)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "IO and utility functions",
-            "match": "\\\\b(${BUCKETS[io]})\\\\b",
+            "match": "\\\\b($(bucket io))\\\\b",
             "name": "support.function.io.pseudolang"
         },
 EOF
 fi
 
 # Uncategorized (if any)
-if [[ -n "${BUCKETS[other]}" ]]; then
+if [[ -n "$(bucket other)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Other builtins (uncategorized)",
-            "match": "\\\\b(${BUCKETS[other]})\\\\b",
+            "match": "\\\\b($(bucket other))\\\\b",
             "name": "support.function.other.pseudolang"
         },
 EOF

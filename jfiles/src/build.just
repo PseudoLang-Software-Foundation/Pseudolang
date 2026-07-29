@@ -22,6 +22,48 @@ build-linux:
 build-linux-arm:
   cd {{ROOT}} && cross build --release --target aarch64-unknown-linux-gnu --features native
 
+# Build macOS arm64 (Apple Silicon) release -- macOS host only
+build-macos:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{ROOT}}"
+  rustup target add aarch64-apple-darwin >/dev/null 2>&1 || true
+  cargo build --release --target aarch64-apple-darwin --features native
+  mkdir -p dist/release
+  cp target/aarch64-apple-darwin/release/fpli dist/release/fpli-macos-arm64
+  chmod +x dist/release/fpli-macos-arm64
+  echo "Built dist/release/fpli-macos-arm64"
+
+# Build macOS x86_64 (Intel) release -- macOS host only
+build-macos-intel:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{ROOT}}"
+  rustup target add x86_64-apple-darwin >/dev/null 2>&1 || true
+  cargo build --release --target x86_64-apple-darwin --features native
+  mkdir -p dist/release
+  cp target/x86_64-apple-darwin/release/fpli dist/release/fpli-macos-amd64
+  chmod +x dist/release/fpli-macos-amd64
+  echo "Built dist/release/fpli-macos-amd64"
+
+# Build a macOS universal (arm64 + x86_64) binary via lipo -- macOS host only
+build-macos-universal: build-macos build-macos-intel
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{ROOT}}"
+  mkdir -p dist/release
+  lipo -create \
+    dist/release/fpli-macos-arm64 \
+    dist/release/fpli-macos-amd64 \
+    -output dist/release/fpli-macos-universal
+  # Ad-hoc sign the fat binary. lipo copies each slice verbatim, so the fat
+  # container itself carries no valid signature (`codesign --verify` reports
+  # "not signed at all"). arm64 macOS can refuse to exec a Mach-O whose signature
+  # is missing or invalidated, so always re-sign after lipo.
+  codesign -s - -f dist/release/fpli-macos-universal
+  chmod +x dist/release/fpli-macos-universal
+  lipo -info dist/release/fpli-macos-universal
+
 # Build WASM (wasm-bindgen via wasm-pack)
 build-wasm:
   cd {{ROOT}} && wasm-pack build --out-dir dist/.tmp --target web --release -- --features wasm
@@ -70,6 +112,54 @@ build-all: release build-wasm build-wasi
       else
         echo "cross not found, skipping Linux cross-compilation"
       fi
+      ;;
+    Darwin*)
+      # macOS: never fall through to the Linux arm below -- target/release/fpli is
+      # a Mach-O binary, so copying it to fpli-linux-amd64 and feeding it to
+      # `cargo deb` would produce a mislabelled artifact and a broken .deb.
+      echo "macOS host ($(uname -m)) - building macOS artifacts..."
+      MAC_SLICES=1
+      rustup target add aarch64-apple-darwin >/dev/null 2>&1 || true
+      rustup target add x86_64-apple-darwin >/dev/null 2>&1 || true
+      if cargo build --release --target aarch64-apple-darwin --features native; then
+        cp target/aarch64-apple-darwin/release/fpli dist/release/fpli-macos-arm64
+        chmod +x dist/release/fpli-macos-arm64
+      else
+        echo "macOS arm64 build failed, skipping"
+        MAC_SLICES=0
+      fi
+      if cargo build --release --target x86_64-apple-darwin --features native; then
+        cp target/x86_64-apple-darwin/release/fpli dist/release/fpli-macos-amd64
+        chmod +x dist/release/fpli-macos-amd64
+      else
+        echo "macOS x86_64 build failed, skipping"
+        MAC_SLICES=0
+      fi
+      if [ "$MAC_SLICES" -eq 1 ]; then
+        lipo -create \
+          dist/release/fpli-macos-arm64 \
+          dist/release/fpli-macos-amd64 \
+          -output dist/release/fpli-macos-universal
+        # lipo leaves the fat container without a valid signature; re-sign ad-hoc.
+        codesign -s - -f dist/release/fpli-macos-universal
+        chmod +x dist/release/fpli-macos-universal
+        lipo -info dist/release/fpli-macos-universal
+      else
+        echo "Skipping universal binary (a slice is missing)"
+      fi
+      if command -v cross >/dev/null 2>&1; then
+        echo "Cross-compiling Linux amd64 target..."
+        cross build --release --target x86_64-unknown-linux-gnu --features native \
+          && cp target/x86_64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-amd64 \
+          || echo "Cross-compilation failed, skipping Linux amd64 target"
+        echo "Cross-compiling Linux ARM64 target..."
+        cross build --release --target aarch64-unknown-linux-gnu --features native \
+          && cp target/aarch64-unknown-linux-gnu/release/fpli dist/release/fpli-linux-arm64 \
+          || echo "Cross-compilation failed, skipping Linux ARM64 target"
+      else
+        echo "cross not found (needs Docker/Podman on macOS), skipping Linux cross-compilation"
+      fi
+      echo "Skipping Debian package: cargo deb on macOS would package a Mach-O binary"
       ;;
     *)
       cp target/release/fpli dist/release/fpli-linux-amd64 || true

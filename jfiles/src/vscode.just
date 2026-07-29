@@ -12,12 +12,16 @@ build-vscode: gen-tmlanguage
   mkdir -p extensions/vscode/syntaxes dist
   cp utils/tm/pseudolang.tmLanguage.json extensions/vscode/syntaxes/
   cp assets/Pseudolang-Logo.png extensions/vscode/icons/icon.png
-  # Inject version from Cargo.toml into package.json
-  sed -i 's/"version": "[^"]*"/"version": "{{VERSION}}"/' extensions/vscode/package.json
+  # Inject version from Cargo.toml into package.json.
+  # `sed -i` with no suffix is a GNU extension; BSD sed (macOS) requires an
+  # argument. `-i.bak` + rm is the form both accept.
+  sed -i.bak 's/"version": "[^"]*"/"version": "{{VERSION}}"/' extensions/vscode/package.json
+  rm -f extensions/vscode/package.json.bak
   cd extensions/vscode && bun run package
   # Restore placeholder version
   cd "{{ROOT}}"
-  sed -i 's/"version": "[^"]*"/"version": "0.0.0"/' extensions/vscode/package.json
+  sed -i.bak 's/"version": "[^"]*"/"version": "0.0.0"/' extensions/vscode/package.json
+  rm -f extensions/vscode/package.json.bak
 
 # Lint extension code with Biome
 lint-vscode:
