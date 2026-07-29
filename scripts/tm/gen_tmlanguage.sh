@@ -10,45 +10,44 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 # --- Category map ---
 # NOTE: portability. /bin/bash on macOS is 3.2.57, which has no associative
-# arrays (`declare -A`). Categories are therefore plain space-delimited strings
-# in `CAT_<name>` variables, looked up with indirect expansion. To add keywords,
-# just extend the relevant CAT_* list below.
+# arrays (`declare -A`), so the keyword-to-category map is a `case` instead.
+# A case also keeps the lists visibly used, which a table of `CAT_*` variables
+# read through indirect expansion does not (shellcheck SC2034). To add a
+# keyword, put it in the relevant branch below.
 CATEGORIES="control constant operator math list dict string io other"
-
-# Control
-CAT_control="IF ELSE REPEAT UNTIL TIMES FOR EACH IN RETURN PROCEDURE CLASS IMPORT TRY CATCH"
-# Constants
-CAT_constant="TRUE FALSE NULL NAN"
-# Operators (keyword-form only; symbol operators are static in the template)
-CAT_operator="MOD AND OR NOT"
-# Math
-CAT_math="RANDOM ABS CEIL FLOOR POW SQRT SIN COS TAN ASIN ACOS ATAN EXP LOG NLOG LOGTEN LOGTWO GCD FACTORIAL DEGREES RADIANS MIN MAX HYPOT ROUND"
-# List
-CAT_list="LENGTH SORT APPEND REMOVE INSERT SPLIT RANGE"
-# Dictionary
-CAT_dict="DICTIONARY KEYS VALUES HASKEY GETKEY SETKEY REMOVEKEY"
-# String
-CAT_string="SUBSTRING CONCAT TRIM REPLACE UPPERCASE LOWERCASE CONTAINS FIND STARTSWITH ENDSWITH"
-# IO / misc
-CAT_io="DISPLAY DISPLAYINLINE INPUT TOSTRING TONUM EXIT SLEEP TIME TIMESTAMP TIMEZONE TIMEZONES MILLITIME EVAL HASARG GETARG"
-# Catch-all bucket; never populated by hand.
-CAT_other=""
 
 # Return the category a keyword belongs to, or "other" if it is unknown.
 category_of() {
-  local kw="$1" cat varname words
-  for cat in $CATEGORIES; do
-    [ "$cat" = "other" ] && continue
-    varname="CAT_$cat"
-    words="${!varname}"
-    case " $words " in
-    *" $kw "*)
-      printf '%s' "$cat"
-      return 0
-      ;;
-    esac
-  done
-  printf 'other'
+  case "$1" in
+  IF | ELSE | REPEAT | UNTIL | TIMES | FOR | EACH | IN | RETURN | PROCEDURE | CLASS | IMPORT | TRY | CATCH)
+    printf 'control'
+    ;;
+  TRUE | FALSE | NULL | NAN)
+    printf 'constant'
+    ;;
+  # Keyword-form operators only; symbol operators are static in the template.
+  MOD | AND | OR | NOT)
+    printf 'operator'
+    ;;
+  RANDOM | ABS | CEIL | FLOOR | POW | SQRT | SIN | COS | TAN | ASIN | ACOS | ATAN | EXP | LOG | NLOG | LOGTEN | LOGTWO | GCD | FACTORIAL | DEGREES | RADIANS | MIN | MAX | HYPOT | ROUND)
+    printf 'math'
+    ;;
+  LENGTH | SORT | APPEND | REMOVE | INSERT | SPLIT | RANGE)
+    printf 'list'
+    ;;
+  DICTIONARY | KEYS | VALUES | HASKEY | GETKEY | SETKEY | REMOVEKEY)
+    printf 'dict'
+    ;;
+  SUBSTRING | CONCAT | TRIM | REPLACE | UPPERCASE | LOWERCASE | CONTAINS | FIND | STARTSWITH | ENDSWITH)
+    printf 'string'
+    ;;
+  DISPLAY | DISPLAYINLINE | INPUT | TOSTRING | TONUM | EXIT | SLEEP | TIME | TIMESTAMP | TIMEZONE | TIMEZONES | MILLITIME | EVAL | HASARG | GETARG)
+    printf 'io'
+    ;;
+  *)
+    printf 'other'
+    ;;
+  esac
 }
 
 # --- Extract keywords from source ---
