@@ -54,8 +54,10 @@ section = "devel"
 priority = "optional"
 assets = [["target/release/fpli", "usr/bin/", "755"]]
 
-[profile.dev]
-panic = "abort"
+# No `panic = "abort"` here. It would make cargo build the cdylib twice, once per
+# panic strategy, and both writes land on the same `fpli_lib.dll`. On Unix that is a
+# filename-collision warning; on Windows the second link cannot open the locked file
+# and the build fails with LNK1104. Release keeps abort, where it affects binary size.
 
 [profile.release]
 opt-level = 3

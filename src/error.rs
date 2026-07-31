@@ -100,10 +100,11 @@ impl PSLError {
             Some(own) => own,
             None => source,
         };
-        let where_from = match &self.origin {
-            Some(origin) => format!("{}: ", origin),
-            None => String::new(),
-        };
+        let where_from = self
+            .origin
+            .as_deref()
+            .map(|origin| format!("{}: ", origin))
+            .unwrap_or_default();
         match self.span {
             Some(span) => {
                 let (line, col, line_content) = resolve_span(source, &span);

@@ -102,11 +102,11 @@ pub fn chdir(path: &str) -> Result<(), String> {
 
 /// Join path segments with the host's separator.
 pub fn join_paths(segments: &[String]) -> String {
-    let mut joined = PathBuf::new();
-    for segment in segments {
-        joined.push(segment);
-    }
-    joined.to_string_lossy().into_owned()
+    segments
+        .iter()
+        .collect::<PathBuf>()
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// The final component of a path (`"a/b/c.txt"` -> `"c.txt"`). A path that ends
@@ -428,9 +428,7 @@ mod host {
 
     /// Logical CPUs, without building a `System`.
     pub fn logical_cpus() -> usize {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1)
+        std::thread::available_parallelism().map_or(1, |n| n.get())
     }
 
     pub fn physical_cpus() -> Option<usize> {

@@ -277,9 +277,8 @@ fn wait_with_timeout(mut child: Child, stdin_data: Option<String>, timeout: Dura
             let _ = stdin.write_all(data.as_bytes());
             let _ = stdin.flush();
         }
-        // Closing the pipe is what turns a further INPUT into EOF instead of a
-        // wait that never ends.
-        drop(stdin);
+        // Returning releases `stdin` and closes the pipe, which is what turns a
+        // further INPUT into EOF instead of a wait that never ends.
     });
     let out_reader = std::thread::spawn(move || read_lossy(&mut stdout));
     let err_reader = std::thread::spawn(move || read_lossy(&mut stderr));

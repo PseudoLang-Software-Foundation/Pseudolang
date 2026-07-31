@@ -2011,10 +2011,10 @@ fn resolve_import(
     span: Span,
 ) -> Result<PathBuf, Interruption> {
     let requested = Path::new(path);
+    // Directories to try the name against, in order. An absolute path has none: it
+    // already names where to look.
     let mut bases: Vec<PathBuf> = Vec::new();
-    if requested.is_absolute() {
-        bases.push(PathBuf::new());
-    } else {
+    if !requested.is_absolute() {
         let importer = env.borrow().modules.borrow().current_file();
         if let Some(dir) = importer.as_deref().and_then(|p| p.parent()) {
             bases.push(dir.to_path_buf());
@@ -2023,8 +2023,10 @@ fn resolve_import(
     }
 
     let mut tried: Vec<String> = Vec::new();
-    for base in &bases {
-        let joined = base.join(requested);
+    for joined in std::iter::once(requested.to_path_buf())
+        .filter(|_| requested.is_absolute())
+        .chain(bases.iter().map(|base| base.join(requested)))
+    {
         // The bare name first, so an explicit extension always wins over the
         // implicit one.
         let mut candidates = vec![joined.clone()];

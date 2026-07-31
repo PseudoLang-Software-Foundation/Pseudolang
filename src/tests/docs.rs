@@ -19,14 +19,15 @@ fn psl_blocks(markdown: &str) -> Vec<(usize, String)> {
         if line.trim() != "```psl" {
             continue;
         }
-        let mut body = String::new();
-        for (_, line) in lines.by_ref() {
-            if line.trim() == "```" {
-                break;
-            }
-            body.push_str(line);
-            body.push('\n');
-        }
+        let body: String = lines
+            .by_ref()
+            .map(|(_, line)| line)
+            .take_while(|line| line.trim() != "```")
+            .fold(String::default(), |mut body, line| {
+                body.push_str(line);
+                body.push('\n');
+                body
+            });
         // `number` is 0-based and the fence is one line above the body.
         blocks.push((number + 2, body));
     }
