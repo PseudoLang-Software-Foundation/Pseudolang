@@ -17,13 +17,39 @@ env:
   RUST_MIN_STACK: 16777216
 
 jobs:
+  # Formatting and lints, once. Cheap, and it fails fast on the things that would
+  # otherwise be found by a reviewer rather than by the machine.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: lint
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # All three supported platforms. Windows matters here specifically: the
+      # system-integration and path built-ins take a different code path there
+      # (cmd.exe rather than sh, `\` separators, PATHEXT lookup, the `\\?\`
+      # verbatim prefix), and cross-compiling the binary proves none of it runs.
       matrix:
-        os: [ubuntu-latest, macos-15]
+        os: [ubuntu-latest, macos-15, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -33,12 +59,40 @@ jobs:
         with:
           key: test-${{ matrix.os }}
 
+      # `cargo test` covers both targets: the in-process suite in `src/tests/`
+      # and the `tests/integration` binary, which drives the built `fpli`
+      # executable as a child process.
       - name: Run Tests
         run: cargo test --verbose
 
+  # The WebAssembly targets have their own `cfg` paths -- every host-facing
+  # built-in compiles to a "no host" stub there -- so they are type-checked on
+  # every push rather than only when a release build happens to exercise them.
+  wasm-check:
+    name: Check (WebAssembly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown, wasm32-wasip1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm-check
+
+      - name: Check Browser WASM
+        run: cargo check --target wasm32-unknown-unknown --features wasm --lib
+
+      - name: Check WASI
+        run: cargo check --target wasm32-wasip1 --features wasi
+
   build:
     name: Build (${{ matrix.target }})
-    needs: test
+    # Gated on the lints as well: a release must not be cut from code that would
+    # be rejected by `cargo clippy -D warnings` locally.
+    needs: [lint, test]
     runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
