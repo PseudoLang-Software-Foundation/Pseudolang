@@ -101,11 +101,18 @@ impl<'a> Lexer<'a> {
         while let Some((token, span)) = self.next_token() {
             match token {
                 Token::Comment => {
+                    // Same reason as `skip_line_comment`: the newline the comment ends
+                    // on separates statements and has to survive.
+                    let mut ended_at_newline = false;
                     for c in self.chars.by_ref() {
                         self.pos += 1;
                         if c == '\n' {
+                            ended_at_newline = true;
                             break;
                         }
+                    }
+                    if ended_at_newline {
+                        tokens.push((Token::Newline, Span::new(self.pos - 1, self.pos)));
                     }
                     continue;
                 }
@@ -134,6 +141,22 @@ impl<'a> Lexer<'a> {
         tokens
     }
 
+    /// Consume the rest of a line comment and report the newline that ended it.
+    ///
+    /// The newline is a statement separator, and swallowing it spliced the next line
+    /// onto the current expression: `z <- f() # note` followed by a line starting with
+    /// `[` was read as indexing the call. Returns `None` only at end of input, where
+    /// there is no newline to report.
+    fn skip_line_comment(&mut self, token_start: usize) -> Option<(Token, Span)> {
+        for c in self.chars.by_ref() {
+            self.pos += 1;
+            if c == '\n' {
+                return Some((Token::Newline, Span::new(token_start, self.pos)));
+            }
+        }
+        None
+    }
+
     // skipcq: RS-R1000
     fn next_token(&mut self) -> Option<(Token, Span)> {
         let next_char = self.chars.next()?;
@@ -145,28 +168,13 @@ impl<'a> Lexer<'a> {
                 if let Some(&'/') = self.chars.peek() {
                     self.chars.next();
                     self.pos += 1;
-
-                    while let Some(c) = self.chars.next() {
-                        self.pos += 1;
-                        if c == '\n' {
-                            return self.next_token();
-                        }
-                    }
-                    self.next_token()
+                    self.skip_line_comment(token_start)
                 } else {
                     Some((Token::Divide, Span::new(token_start, self.pos)))
                 }
             }
 
-            '#' => {
-                while let Some(c) = self.chars.next() {
-                    self.pos += 1;
-                    if c == '\n' {
-                        return self.next_token();
-                    }
-                }
-                self.next_token()
-            }
+            '#' => self.skip_line_comment(token_start),
 
             '\n' => Some((Token::Newline, Span::new(token_start, self.pos))),
             ' ' | '\t' | '\r' => self.next_token(),

@@ -98,3 +98,32 @@ fn test_builtin_keywords_never_lex_as_identifiers() {
         );
     }
 }
+
+#[test]
+fn test_a_stray_closing_brace_at_top_level_is_an_error_not_a_hang() {
+    // `parse_statement` yields an empty statement for `}` without consuming it,
+    // because a block's parser consumes it itself. At top level nothing ever did, so
+    // the program loop spun forever appending empty blocks until memory ran out.
+    let err = get_error("DISPLAY(\"a\")\n}\nDISPLAY(\"b\")");
+    assert!(err.contains("no block is open"), "{}", err);
+
+    let err = get_error("}");
+    assert!(err.contains("no block is open"), "{}", err);
+
+    let err = get_error("IF TRUE\n{\n    DISPLAY(1)\n}\n}\n");
+    assert!(err.contains("no block is open"), "{}", err);
+}
+
+#[test]
+fn test_sort_takes_part_in_the_precedence_chain() {
+    // SORT was intercepted above the operator chain and returned early, so none of
+    // these parsed.
+    assert_output("DISPLAY(SORT([1, 2]) = SORT([1, 2]))", "true");
+    assert_output("DISPLAY(SORT([2, 1]) + [3])", "[1, 2, 3]");
+    assert_output("DISPLAY(SORT([2, 1]) NOT= [9])", "true");
+    assert_output("DISPLAY(LENGTH(SORT([3, 1])) = 2)", "true");
+    // And the shapes that already worked keep working.
+    assert_output("DISPLAY(SORT([3, 1, 2]))", "[1, 2, 3]");
+    assert_output("DISPLAY(SORT([3, 1, 2])[1])", "1");
+    assert_output("xs <- SORT([2, 1])\nDISPLAY(xs)", "[1, 2]");
+}

@@ -10,6 +10,7 @@ mod cli_args;
 mod control_flow;
 mod dictionaries;
 mod error_handling;
+mod indexing;
 mod lists;
 mod parsing;
 mod procedures;

@@ -290,6 +290,25 @@ pub enum UnaryOperator {
 /// PseudoLang program needs.
 pub const MAX_NESTING_DEPTH: usize = 128;
 
+/// Give the next level of descent room, growing the stack when it runs low.
+///
+/// [`MAX_NESTING_DEPTH`] bounds how deep one parse goes, but not what is already on
+/// the stack beneath it, and the parser is reached from inside evaluation by EVAL,
+/// EXECUTE and IMPORT. A program that recursed 900 procedures deep and then evaluated
+/// a 100-level nested expression died of a real stack overflow -- SIGBUS, no
+/// diagnostic. Checking at every level, rather than reserving one block up front,
+/// is what makes the depth reached independent of the depth started from.
+#[cfg(not(target_arch = "wasm32"))]
+fn grow_stack_if_needed<T>(body: impl FnOnce() -> T) -> T {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, body)
+}
+
+/// WebAssembly has no growable stack, so [`MAX_NESTING_DEPTH`] is the whole defence.
+#[cfg(target_arch = "wasm32")]
+fn grow_stack_if_needed<T>(body: impl FnOnce() -> T) -> T {
+    body()
+}
+
 pub struct Parser {
     tokens: Vec<(Token, Span)>,
     current: usize,
@@ -320,7 +339,7 @@ impl Parser {
             )));
         }
         self.depth += 1;
-        let result = body(self);
+        let result = grow_stack_if_needed(|| body(self));
         self.depth -= 1;
         result
     }
@@ -385,6 +404,13 @@ impl Parser {
 
         while self.peek().is_some() {
             Self::debug_print(debug, &format!("Current token: {:?}", self.peek()));
+            // `parse_statement` returns an empty statement for `}` without consuming
+            // it, because a block's parser stops there and consumes it itself. At top
+            // level no block is open, so nothing would ever consume it and this loop
+            // spun forever, appending an empty Block each time until memory ran out.
+            if matches!(self.peek(), Some(Token::CloseBrace)) {
+                return Err(self.create_error("Unexpected '}': no block is open here"));
+            }
             statements.push(self.parse_statement(debug)?);
         }
 
@@ -544,6 +570,15 @@ impl Parser {
                             unreachable!()
                         }
                     }
+                    // With indices already collected this is `a[0](x)`, which reads
+                    // like calling what the index produced. The language has no
+                    // callable values, and the two earlier readings were both silent:
+                    // first the indices were dropped and `a` was called, then the
+                    // `(x)` became a separate statement that evaluated to nothing.
+                    Some(Token::OpenParen) if !list_accesses.is_empty() => Err(self.create_error(
+                        "Cannot call an indexed value: PseudoLang has no callable values, so \
+                             write the procedure name directly",
+                    )),
                     Some(Token::OpenParen) => {
                         self.advance();
                         let mut args = Vec::new();
@@ -553,7 +588,12 @@ impl Parser {
                             }
                             args.push(self.parse_expression(debug)?);
                         }
-                        Ok(self.spanned_from(AstNode::ProcedureCall(identifier, args), start))
+                        let call =
+                            self.spanned_from(AstNode::ProcedureCall(identifier, args), start);
+                        // A call in statement position can be indexed too, so
+                        // that `f(x)[1]` parses the same way here as it does
+                        // inside an expression.
+                        self.parse_postfix_index(call, start, debug)
                     }
                     _ => {
                         if list_accesses.is_empty() {
@@ -673,13 +713,34 @@ impl Parser {
         }
     }
 
+    /// Whether the next token can begin an expression.
+    ///
+    /// Used both to route a statement into `parse_expression` and -- the reason
+    /// completeness matters -- to decide whether `RETURN` has a value after it.
+    /// A token missing from this list made `RETURN` silently return nothing:
+    /// `RETURN CONCAT(a, b)`, `RETURN f"{x}"`, `RETURN NULL` and
+    /// `RETURN SUBSTRING(s, 1, 2)` all handed back the empty value instead of the
+    /// expression's, with no error to show why.
+    ///
+    /// Every token here must be one that `parse_primary_base` can actually start
+    /// on, and must *not* be a keyword that begins a statement form
+    /// (`IF`, `PROCEDURE`, `REPEAT`, `FOR`, `CLASS`, `DISPLAY`, `IMPORT`,
+    /// `RETURN`): the guarded arm in `parse_statement` is tested before those, so
+    /// listing one would swallow its statement. `OpenBrace` is likewise excluded,
+    /// because a `{` in statement position opens a block, not a dictionary; the
+    /// `RETURN` branch tests for it separately.
     fn is_expression_start(&self) -> bool {
         matches!(
             self.peek(),
             Some(Token::Integer(_))
                 | Some(Token::Float(_))
                 | Some(Token::String(_))
+                | Some(Token::RawString(_))
+                | Some(Token::MultilineString(_))
+                | Some(Token::FormattedString(_, _))
                 | Some(Token::Boolean(_))
+                | Some(Token::Null)
+                | Some(Token::NaN)
                 | Some(Token::Identifier(_))
                 | Some(Token::OpenParen)
                 | Some(Token::OpenBracket)
@@ -701,6 +762,9 @@ impl Parser {
                 | Some(Token::ListInsert)
                 | Some(Token::Sort)
                 | Some(Token::Input)
+                | Some(Token::Substring)
+                | Some(Token::Concat)
+                | Some(Token::Eval)
         )
     }
 
@@ -711,19 +775,11 @@ impl Parser {
     }
 
     fn parse_expression_inner(&mut self, debug: bool) -> Result<Spanned, PSLError> {
-        let start = self.peek_span().start;
-        if self.match_token(&Token::Sort) {
-            if !self.match_token(&Token::OpenParen) {
-                return Err(self.create_error("Expected '(' after SORT"));
-            }
-            let list_expr = self.parse_expression(debug)?;
-            if !self.match_token(&Token::CloseParen) {
-                return Err(self.create_error("Expected ')' after list expression"));
-            }
-            Ok(self.spanned_from(AstNode::Sort(Box::new(list_expr)), start))
-        } else {
-            self.parse_logical_or(debug)
-        }
+        // SORT used to be intercepted here and returned before the precedence chain
+        // was entered, so `SORT(a) = SORT(b)` and `SORT(a) + [b]` did not parse at
+        // all. `parse_primary_base` handles the token, which gives it the same
+        // precedence as every other call-shaped built-in.
+        self.parse_logical_or(debug)
     }
 
     fn parse_logical_or(&mut self, debug: bool) -> Result<Spanned, PSLError> {
@@ -899,8 +955,47 @@ impl Parser {
         }
     }
 
-    // skipcq: RS-R1000
+    /// Consume a run of `[i]` suffixes, wrapping `node` in one [`AstNode::ListAccess`]
+    /// per level.
+    ///
+    /// Kept separate from the primary parsers so that indexing composes with
+    /// *any* base expression rather than only with a bare identifier:
+    /// `LISTDIR(d)[1]`, `"abc"[1]`, `SORT(xs)[1]` and `f(x)[1][2]` all route
+    /// through here. The interpreter already evaluates a `ListAccess` base as an
+    /// arbitrary expression, so nothing downstream needed changing.
+    ///
+    /// A `[` on the *next* line cannot be absorbed by mistake, because the lexer
+    /// emits `Token::Newline` and this loop stops at it -- so a statement
+    /// followed by a list literal still parses as two statements.
+    fn parse_postfix_index(
+        &mut self,
+        mut node: Spanned,
+        start: usize,
+        debug: bool,
+    ) -> Result<Spanned, PSLError> {
+        while matches!(self.peek(), Some(Token::OpenBracket)) {
+            self.advance();
+            let index = self.parse_expression(debug)?;
+            if !self.match_token(&Token::CloseBracket) {
+                return Err(self.create_error("Expected ']' after index"));
+            }
+            let end = self.prev_span().end;
+            node = Spanned::new(
+                AstNode::ListAccess(Box::new(node), Box::new(index)),
+                Span::new(start, end),
+            );
+        }
+        Ok(node)
+    }
+
     fn parse_primary(&mut self, debug: bool) -> Result<Spanned, PSLError> {
+        let start = self.peek_span().start;
+        let base = self.parse_primary_base(debug)?;
+        self.parse_postfix_index(base, start, debug)
+    }
+
+    // skipcq: RS-R1000
+    fn parse_primary_base(&mut self, debug: bool) -> Result<Spanned, PSLError> {
         let start = self.peek_span().start;
         match self.peek() {
             Some(Token::ListAppend) => self.parse_builtin(debug, "APPEND", 2, |mut a| {
@@ -948,21 +1043,11 @@ impl Parser {
                 };
 
                 let ident_span = Span::new(start, self.prev_span().end);
-                let mut node = Spanned::new(AstNode::Identifier(name.clone()), ident_span);
 
-                while matches!(self.peek(), Some(Token::OpenBracket)) {
-                    self.advance();
-                    let index = self.parse_expression(debug)?;
-                    if !self.match_token(&Token::CloseBracket) {
-                        return Err(self.create_error("Expected ']' after list index"));
-                    }
-                    let access_end = self.prev_span().end;
-                    node = Spanned::new(
-                        AstNode::ListAccess(Box::new(node), Box::new(index)),
-                        Span::new(start, access_end),
-                    );
-                }
-
+                // The call check comes *before* any indexing. It used to come
+                // after, which meant `a[0](x)` silently threw the index away and
+                // parsed as the call `a(x)`. Indexing a call's result is now the
+                // caller's job (`parse_postfix_index`), so both shapes compose.
                 if self.match_token(&Token::OpenParen) {
                     let mut args = Vec::new();
                     while !self.match_token(&Token::CloseParen) {
@@ -974,7 +1059,7 @@ impl Parser {
                     return Ok(self.spanned_from(AstNode::ProcedureCall(name, args), start));
                 }
 
-                Ok(node)
+                Ok(Spanned::new(AstNode::Identifier(name), ident_span))
             }
             Some(Token::FormattedString(_, _)) => {
                 let (template, vars) = match self.peek() {
@@ -1039,6 +1124,15 @@ impl Parser {
                 )),
                 Some(Token::RawString(s)) => Ok(Spanned::new(
                     AstNode::RawString(s),
+                    Span::new(start, self.prev_span().end),
+                )),
+                // The lexer has always produced this token for `"""..."""`, but
+                // no parser arm ever consumed it, so every multiline string was
+                // rejected as "Unexpected token in expression". It is an ordinary
+                // string that happens to contain newlines, and needs no node of
+                // its own.
+                Some(Token::MultilineString(s)) => Ok(Spanned::new(
+                    AstNode::String(s),
                     Span::new(start, self.prev_span().end),
                 )),
                 Some(Token::Boolean(b)) => Ok(Spanned::new(
@@ -1224,12 +1318,22 @@ impl Parser {
         }
     }
 
+    /// `IMPORT "path/to/lib.psl"` or the bare `IMPORT lib`.
+    ///
+    /// The bare form is what the guide has always documented and is the natural
+    /// spelling for a neighbouring file; the interpreter appends `.psl` when the
+    /// name has no extension, so the two forms agree. A quoted path is still
+    /// required for anything with a directory separator or a dot in it, since
+    /// those cannot be written as an identifier.
     fn parse_import(&mut self) -> Result<Spanned, PSLError> {
         let start = self.peek_span().start;
         self.advance();
         match self.advance() {
-            Some(Token::String(path)) => Ok(self.spanned_from(AstNode::Import(path), start)),
-            _ => Err(self.create_error("Expected string after IMPORT")),
+            Some(Token::String(path)) | Some(Token::RawString(path)) => {
+                Ok(self.spanned_from(AstNode::Import(path), start))
+            }
+            Some(Token::Identifier(name)) => Ok(self.spanned_from(AstNode::Import(name), start)),
+            _ => Err(self.create_error("Expected a module name or quoted path after IMPORT")),
         }
     }
 
