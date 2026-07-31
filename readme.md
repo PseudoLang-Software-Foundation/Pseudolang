@@ -40,16 +40,16 @@ Or download a prebuilt binary from **[nightly releases](https://nightly.link/Pse
 
 ### macOS
 
-Releases ship `fpli-macos-arm64` (Apple Silicon), `fpli-macos-amd64` (Intel), and `fpli-macos-universal` (both). Download the tarball rather than the bare binary — it preserves the executable bit:
+Releases include `fpli-macos-arm64` (Apple Silicon), `fpli-macos-amd64` (Intel), and `fpli-macos-universal` (both). Use the tarball. It keeps the executable bit.
 
 ```bash
 curl -LO https://github.com/PseudoLang-Software-Foundation/Pseudolang/releases/latest/download/fpli-macos-universal.tar.gz
-shasum -a 256 -c fpli-macos-universal.tar.gz.sha256   # optional
+shasum -a 256 -c fpli-macos-universal.tar.gz.sha256
 tar -xzf fpli-macos-universal.tar.gz
 sudo mv fpli-macos-universal /usr/local/bin/fpli
 ```
 
-The binaries are ad-hoc signed but not notarized, so Gatekeeper will quarantine a download made through a browser. Clear it with `xattr -d com.apple.quarantine /usr/local/bin/fpli`, or avoid it entirely by using `curl` or `cargo install`.
+The binaries are ad-hoc signed, not notarized. A browser download gets a Gatekeeper quarantine flag. Remove it with `xattr -d com.apple.quarantine /usr/local/bin/fpli`. Downloads with `curl` or `cargo install` do not get the flag.
 
 ## Use
 
