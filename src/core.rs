@@ -1,11 +1,18 @@
 use crate::{interpreter, lexer::Lexer, parser};
 use std::fmt::Write;
 
+/// Lex, parse and run a program.
+///
+/// `script_path` is the file the source came from, when there is one. It is what
+/// IMPORT resolves relative paths against and what SCRIPTPATH and ISMAIN report,
+/// so passing `None` (the library API, the browser playground) simply means the
+/// program has no location and those report nothing rather than guessing.
 pub fn execute_code(
     source_code: &str,
     debug: bool,
     return_output: bool,
     args: &[String],
+    script_path: Option<&std::path::Path>,
 ) -> Result<String, String> {
     let mut lexer = Lexer::new(source_code);
     let tokens = lexer.tokenize();
@@ -35,7 +42,14 @@ pub fn execute_code(
         interpreter::OutputMode::Stdout
     };
 
-    match interpreter::run_with_mode(ast, source_code, args, mode, debug) {
+    match interpreter::run_with_mode(
+        ast,
+        source_code,
+        args,
+        mode,
+        debug,
+        script_path.map(std::path::Path::to_path_buf),
+    ) {
         Ok(output) => Ok(output),
         Err(e) => Err(e.format(source_code)),
     }

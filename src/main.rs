@@ -6,6 +6,7 @@ mod error;
 mod interpreter;
 mod lexer;
 mod parser;
+mod system;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
@@ -84,7 +85,13 @@ fn run_program(input_file: &str, debug: bool, program_args: &[String]) -> Result
     file.read_to_string(&mut source_code)
         .map_err(|e| format!("Error reading file {}: {}", input_file, e))?;
 
-    match execute_code(&source_code, debug, false, program_args) {
+    match execute_code(
+        &source_code,
+        debug,
+        false,
+        program_args,
+        Some(std::path::Path::new(input_file)),
+    ) {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }

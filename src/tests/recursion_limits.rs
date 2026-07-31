@@ -210,3 +210,56 @@ fn test_deeply_nested_f_strings_are_an_error_not_a_crash() {
         assert_nesting_error(&source);
     });
 }
+
+#[test]
+fn test_a_deep_parse_inside_eval_at_depth_does_not_crash() {
+    // EVAL invokes the parser from inside evaluation, and the parser has no stack
+    // guard of its own: MAX_NESTING_DEPTH bounds one parse, not what is already
+    // beneath it. This combination died of a real stack overflow (SIGBUS), taking
+    // the process with it and printing nothing.
+    let nested = format!("{}1{}", "(".repeat(100), ")".repeat(100));
+    let program = format!(
+        r#"
+        PROCEDURE rec(n)
+        {{
+            IF n <= 0
+            {{
+                RETURN EVAL("{}")
+            }}
+            RETURN rec(n - 1)
+        }}
+        DISPLAY(rec(900))
+        "#,
+        nested
+    );
+    assert_output(&program, "1");
+}
+
+#[test]
+fn test_a_deep_parse_inside_execute_at_depth_does_not_crash() {
+    let nested = format!("x <- {}1{}", "(".repeat(120), ")".repeat(120));
+    let program = format!(
+        r#"
+        PROCEDURE rec(n)
+        {{
+            IF n <= 0
+            {{
+                EXECUTE("{}")
+                RETURN x
+            }}
+            RETURN rec(n - 1)
+        }}
+        DISPLAY(rec(900))
+        "#,
+        nested
+    );
+    assert_output(&program, "1");
+}
+
+#[test]
+fn test_the_parser_nesting_limit_still_applies_inside_eval() {
+    // The headroom must not turn the depth guard off.
+    let too_deep = format!("{}1{}", "(".repeat(200), ")".repeat(200));
+    let err = get_error(&format!("DISPLAY(EVAL(\"{}\"))", too_deep));
+    assert!(err.contains("Maximum nesting depth exceeded"), "{}", err);
+}

@@ -78,7 +78,16 @@ console_error_panic_hook = { version = "0.1", optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 chrono = "0.4"
 chrono-tz = "0.10"
+dirs = "6"
 stacker = "0.1"
+# Only the CPU/memory/process/host half of sysinfo is used, so the disk,
+# component, network and user probes are switched off -- they pull in extra
+# platform bindings for facts PseudoLang does not expose.
+#
+# Pinned to 0.38 deliberately: 0.39 raises its MSRV to 1.95, well past this
+# crate's `rust-version = "1.88"`.
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
+which = "8"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", optional = true }

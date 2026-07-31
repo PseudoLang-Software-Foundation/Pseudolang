@@ -31,6 +31,18 @@ pub struct PSLError {
     pub message: String,
     pub span: Option<Span>,
     pub stack_trace: Vec<StackFrame>,
+    /// The text `span` indexes into, when that is not the program the caller
+    /// started with.
+    ///
+    /// A program made of several files has one span space per file, so an error
+    /// raised in an imported file cannot be resolved against the entry script: the
+    /// offsets would land on unrelated text, and the caret would point at the wrong
+    /// line of the wrong file. Capturing the source here means the error carries
+    /// what it needs to render itself, whatever unwinds it.
+    pub source: Option<std::rc::Rc<str>>,
+    /// The file `source` came from, named in the rendered output so the reader knows
+    /// which file to open.
+    pub origin: Option<String>,
 }
 
 pub fn resolve_span(source: &str, span: &Span) -> (usize, usize, String) {
@@ -66,6 +78,8 @@ impl PSLError {
             message: message.into(),
             span: None,
             stack_trace: Vec::new(),
+            source: None,
+            origin: None,
         }
     }
 
@@ -74,10 +88,22 @@ impl PSLError {
             message: message.into(),
             span: Some(span),
             stack_trace: Vec::new(),
+            source: None,
+            origin: None,
         }
     }
 
     pub fn format(&self, source: &str) -> String {
+        // The error's own source wins: its span indexes into that, not into whatever
+        // the caller happens to hold.
+        let source: &str = match &self.source {
+            Some(own) => own,
+            None => source,
+        };
+        let where_from = match &self.origin {
+            Some(origin) => format!("{}: ", origin),
+            None => String::new(),
+        };
         match self.span {
             Some(span) => {
                 let (line, col, line_content) = resolve_span(source, &span);
@@ -86,7 +112,7 @@ impl PSLError {
                 let adjusted_col = if col > indent { col - indent } else { col };
 
                 let mut result = format!(
-                    "Line {}, Column {}: {}\n    {}\n    {}^",
+                    "{where_from}Line {}, Column {}: {}\n    {}\n    {}^",
                     line,
                     col,
                     self.message,
