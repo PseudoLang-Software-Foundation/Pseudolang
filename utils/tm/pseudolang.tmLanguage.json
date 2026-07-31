@@ -37,7 +37,7 @@
         },
         {
             "comment": "Operators",
-            "match": "(<-|\\+|-|\\*|/|=|NOT=|>=|<=|>|<|AND|MOD|NOT|OR)",
+            "match": "(<-|\\+|-|\\*|/|=|NOT=|>=|<=|>|<|\\b(?:AND|MOD|NOT|OR)\\b)",
             "name": "keyword.operator.pseudolang"
         },
         {
@@ -64,6 +64,21 @@
             "comment": "IO and utility functions",
             "match": "\\b(DISPLAY|DISPLAYINLINE|EVAL|EXIT|GETARG|HASARG|INPUT|MILLITIME|SLEEP|TIME|TIMESTAMP|TIMEZONE|TIMEZONES|TONUM|TOSTRING)\\b",
             "name": "support.function.io.pseudolang"
+        },
+        {
+            "comment": "File IO functions",
+            "match": "\\b(ABSPATH|APPENDFILE|BASENAME|CACHEDIR|CHDIR|CONFIGDIR|COPYFILE|CWD|DATADIR|DELETEDIR|DELETEFILE|DELETETREE|DIRNAME|EXTENSION|FILEEXISTS|FILEMTIME|FILESIZE|HOMEDIR|ISDIR|ISFILE|JOINPATH|LISTDIR|MAKEDIR|READFILE|READLINES|REALPATH|RENAME|TEMPDIR|WRITEFILE)\\b",
+            "name": "support.function.file.pseudolang"
+        },
+        {
+            "comment": "System integration functions",
+            "match": "\\b(ARCH|CPUCOUNT|ENVVARS|EXEC|GETENV|HOSTNAME|KERNELVERSION|KILL|OSFAMILY|OSNAME|OSVERSION|PHYSICALCPUS|PID|PLATFORM|PROCESSES|PROCESSINFO|SETENV|SHELL|SYSINFO|TOTALMEMORY|UNSETENV|UPTIME|USEDMEMORY|USERNAME|VERSION|WHICH)\\b",
+            "name": "support.function.system.pseudolang"
+        },
+        {
+            "comment": "Meta programming and module functions",
+            "match": "\\b(CALL|EXECUTE|GETVAR|ISDEFINED|ISMAIN|MODULES|PROCEDURES|SCRIPTPATH|SETVAR|TYPEOF|UNSETVAR|VARIABLES)\\b",
+            "name": "support.function.meta.pseudolang"
         },
         {
             "comment": "Multiline string",

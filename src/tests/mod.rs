@@ -11,6 +11,7 @@ mod basics;
 mod cli_args;
 mod control_flow;
 mod dictionaries;
+mod docs;
 mod error_handling;
 mod file_io;
 mod indexing;

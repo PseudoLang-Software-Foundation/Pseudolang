@@ -238,6 +238,23 @@ Accesses the element of aList at index i. The first element of aList is at index
 
 Assigns the value of aList[i] to the variable b, or assigns the value of aList[i] to the variable b.
 
+`anyExpression[i]`
+
+`[i]` may follow any expression, not only a variable name, and several may be
+chained.
+
+```psl
+DISPLAY(SPLIT("a,b,c", ",")[2])   COMMENT returns b
+DISPLAY(LISTDIR(".")[1])          COMMENT the first entry in this directory
+DISPLAY("hello"[1])               COMMENT returns h
+DISPLAY([[1, 2], [3, 4]][2][1])   COMMENT returns 3
+DISPLAY({"k": [9, 8]}["k"][2])    COMMENT returns 8
+```
+
+The left-hand side of an assignment must still start from a variable: `aList[i] <- b`
+is valid, `f()[i] <- b` is not. An indexed value cannot be called either: there are no
+callable values, so `handlers[1](x)` is an error rather than a call.
+
 `aList[b] <- aList[c]`
 
 Assigns the value of aList[c] to aList[b].
@@ -514,7 +531,18 @@ Dictionary (insertion-ordered key-value pairs; keys may be strings, integers or 
 
 `NULL`
 
-A special value representing the absence of a value.
+A special value representing the absence of a value. `WHICH`, `PROCESSINFO`,
+`HOSTNAME` and `SCRIPTPATH` return it when there is nothing to report.
+
+```psl
+IF WHICH("git") = NULL
+{
+    DISPLAY("git is not installed")
+}
+```
+
+`NULL` equals `NULL` and is unequal to every other value. `<` and `>` against
+`NULL` are always false.
 
 `NAN`
 
@@ -538,6 +566,8 @@ A comment (multi-line or single-line), anything on the line after this or in bet
 `IMPORT a`
 
 Imports a library (including functions & variables defined in that file) from a file.
+See [Libraries and Multiple Files](#libraries-and-multiple-files) for how the file is
+found and for the once-only rule.
 
 ```psl
 CLASS className
@@ -555,6 +585,14 @@ Creates a raw string.
 `f"a{b}"`
 
 Creates a formatted string, the string value of the variable is added to the string.
+
+```psl
+x <- """line one
+line two"""
+```
+
+Creates a multiline string. Newlines inside the triple quotes are kept, and `\`
+escapes are not processed.
 
 `SLEEP(x)`
 
@@ -591,6 +629,24 @@ TRY {
 
 The try-catch statement allows you to handle errors that might occur during program execution. Any statements inside the try block that cause an error will stop execution of that block and transfer control to the catch block. The error message is stored in the variable specified in parentheses after catch and can be used inside the catch block.
 
+Assignments inside either block persist afterwards, as in `IF`, `FOR EACH` and
+`REPEAT`:
+
+```psl
+TRY
+{
+    config <- READFILE("config.txt")
+} CATCH (err)
+{
+    config <- "defaults"
+}
+DISPLAY(config)             COMMENT "defaults" when the file is missing
+```
+
+The error variable is the exception: it exists only inside the catch block, and a
+variable of the same name from outside is restored afterwards. Only a `PROCEDURE`
+body gets a private scope.
+
 ```psl
 expression <- "x* (x+1)*(x+2)"
 x <- 3
@@ -602,6 +658,476 @@ EVAL takes in a string expression, that will return the evaluated response as if
 `EXIT()`
 
 Terminates program execution immediately.
+
+## File IO
+
+PseudoLang can read and write text files on disk. Paths are used exactly as given, so
+a relative path resolves against the directory `fpli` was run from, not the directory
+the `.psl` file lives in.
+
+Every one of these functions raises an ordinary runtime error when the operation
+fails, and the message names both the function and the path. That means a failure can
+be handled with `TRY`/`CATCH` like any other error:
+
+```psl
+TRY
+{
+    config <- READFILE("config.txt")
+} CATCH (err)
+{
+    DISPLAY("Using defaults: " + err)
+    config <- ""
+}
+```
+
+### Reading
+
+`READFILE(path)` — Returns the whole file as a single string. Errors if the file is
+missing, is a directory, or is not valid UTF-8 text.
+
+`READLINES(path)` — Returns a list of the file's lines as strings. Line terminators
+are stripped, `\r\n` and `\n` are both recognised, and a file ending in a newline does
+not produce a trailing empty entry. An empty file gives an empty list.
+
+```psl
+total <- 0
+FOR EACH line IN READLINES("scores.txt")
+{
+    total <- total + TONUM(line)
+}
+DISPLAY(total)
+```
+
+### Writing
+
+`WRITEFILE(path, text)` — Creates the file if it does not exist and **replaces** its
+contents otherwise. `text` must be a string; use `TOSTRING` to write a number.
+
+`APPENDFILE(path, text)` — Adds `text` to the end of the file, creating it first if
+needed. Nothing is inserted between appends, so write your own `"\n"` for line-based
+output.
+
+```psl
+APPENDFILE("log.txt", "started\n")
+APPENDFILE("log.txt", f"result: {TOSTRING(x)}\n")
+```
+
+### Inspecting and removing
+
+`FILEEXISTS(path)` — Returns `TRUE` if something exists at `path` (a file or a
+directory). This is the one file function that never errors.
+
+`FILESIZE(path)` — Returns the size in **bytes** as an integer. For non-ASCII text
+this differs from `LENGTH(READFILE(path))`, which counts characters.
+
+`FILEMTIME(path)` — When the file was last modified, as Unix seconds.
+
+```psl
+IF FILEMTIME("input.csv") > FILEMTIME("report.txt")
+{
+    DISPLAY("the report is out of date")
+}
+DISPLAY(TIME(FILEMTIME("input.csv")))
+```
+
+`DELETEFILE(path)` — Removes a file. A directory is refused, with an error naming
+the two functions below.
+
+`DELETEDIR(path)` — Removes an empty directory. A directory that still holds
+anything is refused.
+
+`DELETETREE(path)` — Removes a directory and everything inside it. A plain file is
+refused.
+
+```psl
+MAKEDIR("build/artifacts")
+COMMENT ... work ...
+DELETETREE("build")             COMMENT the whole tree
+MAKEDIR("empty")
+DELETEDIR("empty")              COMMENT only if it is empty
+```
+
+`LISTDIR(path)` — Returns the names of the entries in a directory, sorted
+alphabetically. The entries are bare names, not full paths.
+
+`MAKEDIR(path)` — Creates a directory, including any missing parent directories.
+Succeeds if the directory already exists.
+
+```psl
+MAKEDIR("output/reports")
+WRITEFILE("output/reports/summary.txt", "done")
+names <- LISTDIR("output/reports")
+DISPLAY(names)              COMMENT returns [summary.txt]
+```
+
+### Moving and copying
+
+`RENAME(from, to)` — Moves or renames a file, replacing the destination if it
+already exists.
+
+`ISFILE(path)` and `ISDIR(path)` — Ask specifically whether a path is a file or a
+directory. `FILEEXISTS` answers for either.
+
+`COPYFILE(from, to)` — Copies a file, overwriting the destination. Returns the
+number of bytes copied.
+
+```psl
+IF ISFILE("draft.txt")
+{
+    n <- COPYFILE("draft.txt", "backup.txt")
+    DISPLAY(f"backed up {TOSTRING(n)} bytes")
+    RENAME("draft.txt", "final.txt")
+}
+```
+
+`WRITEFILE`, `APPENDFILE`, `DELETEFILE`, `DELETEDIR`, `DELETETREE`, `MAKEDIR` and
+`RENAME` return no value.
+
+### Availability
+
+File IO needs a real filesystem. It works in the native `fpli` binary and under WASI,
+but in the browser-embedded WebAssembly build (including the web IDE) every file
+function raises an error explaining that the browser sandbox has no filesystem.
+
+## Paths and the Working Directory
+
+These are string operations on paths -- correct for Windows separators and POSIX
+ones alike, because they use the host's own path rules rather than assuming `/`.
+Except for `REALPATH`, none of them touches the filesystem, so they work on paths
+that do not exist yet.
+
+`JOINPATH(a, b, ...)` — Joins any number of segments with the host's separator.
+Prefer this to `CONCAT` with a literal `"/"`.
+
+`BASENAME(path)` — The final component. `"a/b/c.txt"` gives `"c.txt"`.
+
+`DIRNAME(path)` — Everything before the final component. `"a/b/c.txt"` gives
+`"a/b"`, and a bare filename gives `""`.
+
+`EXTENSION(path)` — The extension without its dot, or `""` if there is none.
+`"a/b.tar.gz"` gives `"gz"`.
+
+`ABSPATH(path)` — Resolves a relative path against the working directory. Does not
+require the path to exist and does not follow symlinks or collapse `..`.
+
+`REALPATH(path)` — Resolves a path all the way to a real location, following
+symlinks. The path must exist.
+
+```psl
+p <- JOINPATH("data", "raw", "input.csv")
+DISPLAY(BASENAME(p))        COMMENT returns input.csv
+DISPLAY(EXTENSION(p))       COMMENT returns csv
+DISPLAY(DIRNAME(p))         COMMENT returns data/raw (data\raw on Windows)
+```
+
+`CWD()` — The current working directory.
+
+`CHDIR(path)` — Changes it. Relative paths used afterwards -- including in
+`READFILE` and `WRITEFILE` -- resolve against the new directory, so this changes
+the meaning of every relative path in the rest of the program.
+
+`TEMPDIR()` — The system temporary directory.
+
+`HOMEDIR()`, `CONFIGDIR()`, `CACHEDIR()`, `DATADIR()` — The conventional per-user
+directories for this platform: `%APPDATA%` and friends on Windows,
+`~/Library/Application Support` on macOS, the `XDG_*` locations on Linux. Each
+raises an error on a platform that has no such directory for the current user.
+
+## System Integration
+
+### Environment variables
+
+`GETENV(name)` — The value of an environment variable. Errors if it is not set.
+Windows matches names case-insensitively, while `ENVVARS()` reports them with the
+casing the OS stores.
+
+`GETENV(name, default)` — The value, or `default` if it is not set. The default may
+be any value, not just a string.
+
+`SETENV(name, value)` — Sets a variable for this program **and every process it
+starts afterwards**. `UNSETENV(name)` removes one; removing a variable that was
+never set is not an error.
+
+`ENVVARS()` — Every variable as a dictionary, ordered by name. A variable whose name
+or value is not valid text is left out rather than failing the call.
+
+```psl
+level <- GETENV("LOG_LEVEL", "info")
+SETENV("PYTHONWARNINGS", "ignore")
+DISPLAY(LENGTH(ENVVARS()) > 0)
+COMMENT GETENV, not CONTAINS(ENVVARS(), ...): Windows stores this key as "Path",
+COMMENT and GETENV is the lookup that ignores case.
+IF GETENV("PATH", "") NOT= ""
+{
+    DISPLAY("PATH is set")
+}
+```
+
+### Running other programs
+
+Both forms wait for the program to finish and return a dictionary with three keys:
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `exitcode` | Integer or `NULL` | The exit status; `NULL` if the program was killed by a signal |
+| `stdout` | String | Everything it printed to standard output |
+| `stderr` | String | Everything it printed to standard error |
+
+`EXEC(program)` or `EXEC(program, argsList)` — Runs a program **directly, with no
+shell**. Each element of `argsList` is passed through as one argument exactly as
+written, so a filename containing a space, a quote or a `;` arrives intact. This is
+the form to reach for by default. On Windows it reaches executables, not `.bat` or
+`.cmd` scripts, which need a shell; use `SHELL` for those even though `WHICH` finds
+them.
+
+`SHELL(commandLine)` — Runs a command line through the platform's shell: `cmd /C`
+on Windows, `sh -c` elsewhere. Use this only when shell syntax -- pipes,
+redirection, globbing -- is actually wanted, and remember that the string is
+re-parsed by the shell.
+
+`WHICH(program)` — Where a program is on `PATH`, or `NULL` if it is not installed.
+Handles the `.exe`/`PATHEXT` lookup on Windows.
+
+```psl
+IF WHICH("git") NOT= NULL
+{
+    r <- EXEC("git", ["rev-parse", "--short", "HEAD"])
+    IF r["exitcode"] = 0
+    {
+        DISPLAY(CONCAT("at commit ", TRIM(r["stdout"])))
+    } ELSE
+    {
+        DISPLAY(CONCAT("git failed: ", r["stderr"]))
+    }
+}
+```
+
+Output is collected in memory rather than streamed, so a command that prints an
+enormous amount is best redirected to a file with `SHELL` and then read back with
+`READLINES`.
+
+### Processes
+
+`PID()` — This program's own process id.
+
+`PROCESSINFO(pid)` — A dictionary describing one process, or `NULL` if nothing is
+running under that id. Keys: `pid`, `name`, `memory` (bytes), `parent` (a pid or
+`NULL`).
+
+`PROCESSES()` — Every process the current user can see, as a list of those same
+dictionaries, ordered by pid. On a busy machine this is a long list.
+
+`KILL(pid)` — Force-terminates a process: SIGKILL on Unix, `TerminateProcess` on
+Windows, with no chance for the target to clean up. Returns `FALSE` if the request
+was refused, usually because the process belongs to another user; errors if no
+process has that id. It refuses to terminate the interpreter itself -- use `EXIT`.
+
+`EXIT()` or `EXIT(code)` — Ends the program immediately, with exit status `code`
+(0--255, defaulting to 0). Buffered output is flushed first, and `TRY` does not catch
+it. Run from the `fpli` CLI, `code` becomes the process's exit status; embedded as a
+library or in the browser, the program stops and the caller keeps its process and
+everything printed.
+
+```psl
+me <- PROCESSINFO(PID())
+pid <- me["pid"]
+used <- me["memory"]
+DISPLAY(f"running as pid {pid} using {used} bytes")
+```
+
+## Environment Information
+
+Facts about the machine the program is running on. The compile-time ones are always
+known; the probed ones are `NULL` on a platform that genuinely cannot report them,
+which is worth distinguishing from an empty string.
+
+| Function | Type | Meaning |
+|----------|------|---------|
+| `PLATFORM()` | String | `"windows"`, `"macos"`, `"linux"`, `"wasi"`, ... |
+| `ARCH()` | String | `"x86_64"`, `"aarch64"`, ... |
+| `OSFAMILY()` | String | `"windows"`, `"unix"` or `"wasm"` |
+| `OSNAME()` | String or `NULL` | The OS's own name for itself |
+| `OSVERSION()` | String or `NULL` | Long OS version |
+| `KERNELVERSION()` | String or `NULL` | Kernel version |
+| `HOSTNAME()` | String or `NULL` | This machine's hostname |
+| `USERNAME()` | String or `NULL` | The user running the program |
+| `VERSION()` | String | The `fpli` interpreter's version |
+| `CPUCOUNT()` | Integer | Logical CPUs available to this program |
+| `PHYSICALCPUS()` | Integer or `NULL` | Physical cores |
+| `TOTALMEMORY()` | Integer | Total system memory in bytes |
+| `USEDMEMORY()` | Integer | Memory in use, in bytes |
+| `UPTIME()` | Integer | Seconds since the machine booted |
+
+`SYSINFO()` — All of the above at once, as a dictionary keyed
+`platform`, `arch`, `osfamily`, `osname`, `osversion`, `kernelversion`, `hostname`,
+`username`, `cpucount`, `physicalcpus`, `totalmemory`, `usedmemory`, `uptime`,
+`version`.
+
+```psl
+IF PLATFORM() = "windows"
+{
+    r <- SHELL("dir")
+} ELSE
+{
+    r <- SHELL("ls")
+}
+DISPLAY(f"{PLATFORM()}/{ARCH()} with {TOSTRING(CPUCOUNT())} CPUs")
+```
+
+## Meta Programming
+
+### Inspecting values
+
+`TYPEOF(value)` — The value's type as a string: one of `"integer"`, `"float"`,
+`"string"`, `"boolean"`, `"list"`, `"dictionary"`, `"null"`, `"nan"`, or `"unit"`
+for the empty value that a procedure without `RETURN` yields.
+
+```psl
+DISPLAY(TYPEOF(1))          COMMENT returns integer
+DISPLAY(TYPEOF(1.5))        COMMENT returns float
+DISPLAY(TYPEOF([1]))        COMMENT returns list
+DISPLAY(TYPEOF(NULL))       COMMENT returns null
+```
+
+### Running generated code
+
+`EVAL(expression)` — Evaluates a string as a single **expression** and returns its
+value.
+
+`EXECUTE(source)` — Runs a string as a whole **program**: statements, assignments
+and procedure declarations, all landing in the calling scope. Returns no value.
+
+```psl
+EXECUTE("total <- 0")
+FOR EACH n IN [1, 2, 3]
+{
+    EXECUTE("total <- total + " + TOSTRING(n))
+}
+DISPLAY(total)              COMMENT returns 6
+```
+
+Source produced at run time may itself call `EVAL` or `EXECUTE`, but the nesting is
+capped: 32 levels, after which the program stops with a clear error rather than
+exhausting the interpreter's stack. Each level carries its own lexer, parser and
+syntax tree, which is why the limit is far lower than the 1000-deep limit on
+ordinary procedure recursion.
+
+### Reaching variables and procedures by name
+
+`ISDEFINED(name)` — Whether a variable of that name is in scope.
+
+`GETVAR(name)` or `GETVAR(name, default)` — The value of a variable named by a
+string. Errors without a default if the variable does not exist.
+
+`SETVAR(name, value)` — Creates or updates a variable whose name is computed, in the
+current scope, and returns the value assigned. The name must be one that could have
+been written in source: a letter followed by letters, digits and underscores, and not
+a keyword.
+
+`UNSETVAR(name)` — Removes a variable from the current scope, returning whether there
+was one to remove. Like `SETVAR`, it acts on the current scope only, so it cannot
+delete a caller's variable.
+
+`VARIABLES()` — The names of every variable in scope, sorted.
+
+`PROCEDURES()` — The names of every declared procedure, sorted.
+
+`CALL(name)` or `CALL(name, argsList)` — Calls a procedure chosen at run time.
+
+```psl
+PROCEDURE up(s)
+{
+    RETURN UPPERCASE(s)
+}
+PROCEDURE down(s)
+{
+    RETURN LOWERCASE(s)
+}
+FOR EACH which IN ["up", "down"]
+{
+    DISPLAY(CALL(which, ["MiXeD"]))
+}
+```
+
+`CALL` dispatches to procedures declared with `PROCEDURE`, not to built-in
+functions -- a built-in's name is known when the program is written, so it never
+needs to be looked up. Recursion through `CALL` is bounded by the same limit as any
+other recursion.
+
+## Libraries and Multiple Files
+
+`IMPORT libname` or `IMPORT "path/to/libname.psl"`
+
+Runs another `.psl` file and makes everything it declares -- procedures and
+variables alike -- available to the importing file. The namespace is flat: there is
+no prefix, so a library's names are simply added to yours.
+
+The bare form is the natural spelling for a neighbouring file. A quoted path is
+needed for anything containing a directory separator.
+
+**How a file is found.** A relative path is looked for next to the *importing file*
+first, and only then relative to the directory `fpli` was run from. A `.psl`
+extension is added when the name has none, so `IMPORT "strings"` and
+`IMPORT "strings.psl"` mean the same file. An absolute path is used as given. When
+nothing matches, the error lists every location tried.
+
+Because resolution follows the importing file, a library can import its own
+neighbours and the whole program works no matter which directory it is launched
+from.
+
+**Each file runs once.** However many times a file is imported, and by however many
+different spellings of its path, its top-level code runs exactly once. That also
+makes circular imports terminate: if `a.psl` imports `b.psl` and `b.psl` imports
+`a.psl`, the second import is simply skipped. Procedures are looked up when called
+rather than when declared, so two files may still use each other's procedures.
+
+A file whose body fails is not recorded, so a later `IMPORT` of it runs it again from
+the top -- including any top-level work it had already done before failing. `RETURN`
+at a file's top level ends that file and nothing more.
+
+**Where the names land.** An imported file's declarations go into the outermost scope,
+whatever scope the `IMPORT` was written in. An `IMPORT` inside a procedure body or a
+`CATCH` block therefore still makes its names available to the whole program.
+
+An error raised inside an imported file names that file and shows the offending line
+from it.
+
+### Knowing which file you are in
+
+`SCRIPTPATH()` — The absolute path of the file whose code is running. Inside a
+procedure this is the file the procedure was **written** in, not the file that
+called it, which is what lets a library find its own resources. It is `NULL` when
+the program has no location at all -- the library API, or the browser playground.
+
+`ISMAIN()` — `TRUE` only when the running code was written in the file `fpli` was
+pointed at. This is PseudoLang's `if __name__ == "__main__"`: a library can carry a
+demo or a self-test that stays quiet when the file is imported.
+
+`MODULES()` — The paths of the files imported so far, in import order. The entry
+script is not among them.
+
+```psl
+COMMENT lib/table.psl
+PROCEDURE rows()
+{
+    COMMENT reads a file sitting next to this library, wherever it was imported from
+    RETURN READLINES(JOINPATH(DIRNAME(SCRIPTPATH()), "rows.txt"))
+}
+
+IF ISMAIN()
+{
+    DISPLAY("table.psl self-test")
+    DISPLAY(LENGTH(rows()))
+}
+```
+
+```psl
+COMMENT main.psl
+IMPORT "lib/table.psl"
+DISPLAY(LENGTH(rows()))
+DISPLAY(ISMAIN())           COMMENT returns true
+DISPLAY(MODULES())          COMMENT returns the absolute path of lib/table.psl
+```
 
 ## Command-Line Arguments
 
@@ -661,3 +1187,18 @@ Expressions and blocks may not nest more than 128 levels deep. Each nested `(`, 
 call argument or `{` block counts as one level; exceeding the limit is reported as
 `Maximum nesting depth exceeded`. This is far more nesting than a readable program
 needs, and it keeps pathological input from exhausting the interpreter's stack.
+
+Procedure recursion is capped at 1000 nested calls, and `EVAL`/`EXECUTE` nesting at
+32 levels. Both are reported as errors rather than crashing the interpreter.
+
+Built-in functions are resolved before user-defined procedures, so a procedure
+declared with a built-in's name is never called. A *variable* may still be named like
+a built-in, since only calls resolve to built-ins.
+
+`CLASS` is parsed but not implemented, and networking is not available yet -- `IMPORT`
+reads local files only.
+
+Everything that needs a host process -- file IO, paths, running programs, process
+management and the machine facts -- works in the native `fpli` binary and under WASI.
+In the browser-embedded WebAssembly build each of those raises an error saying the
+sandbox has no filesystem or host process; the rest of the language is unaffected.

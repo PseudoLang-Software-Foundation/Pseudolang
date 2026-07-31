@@ -105,9 +105,85 @@ All recipes live in `jfiles/src/` and are run with [`just`](https://github.com/c
 | `just clean`              | Remove build artifacts                                         |
 | `just tag-release`        | Tag current version and push (triggers CI release)             |
 
+## Testing
+
+`cargo test` runs both suites.
+
+**`src/tests/`** drives the interpreter as a library. Most tests belong here.
+
+```rust
+// src/tests/<area>.rs, declared as `mod <area>;` in src/tests/mod.rs
+use super::{assert_output, get_error};
+
+#[test]
+fn test_addition() {
+    assert_output("DISPLAY(1 + 1)", "2");
+    assert!(get_error("DISPLAY(1 / 0)").contains("Division by zero"));
+}
+```
+
+Helpers in `src/tests/mod.rs`: `assert_output`, `get_error`,
+`assert_output_with_args`, `assert_output_at` / `get_error_at` (run as though
+loaded from a given path, for `IMPORT` / `SCRIPTPATH` / `ISMAIN`), and `Scratch`,
+a self-deleting temporary directory.
+
+**`tests/integration/`** runs the built `fpli` binary as a child process, one
+process and one temporary directory per test. Use it for `EXIT` and exit codes,
+`INPUT`, `SLEEP` and flushing, `CHDIR` and `SETENV`, CLI arguments and stderr,
+`IMPORT` resolution against a different working directory, and streamed stdout.
+A library call cannot reach any of those.
+
+```rust
+// tests/integration/<area>.rs, declared as `mod <area>;` in tests/integration/main.rs
+use crate::harness::Program;
+
+#[test]
+fn input_reads_stdin() {
+    Program::new(r#"DISPLAY(INPUT())"#)
+        .stdin("hello\n")
+        .run()
+        .success()
+        .stdout_is("hello");
+}
+
+#[test]
+fn exit_code_and_files_are_observable() {
+    let run = Program::new(r#"WRITEFILE("out.txt", "x")
+EXIT(3)"#)
+        .file("lib.psl", "PROCEDURE p()\n{\n RETURN 1\n}")
+        .arg("--mode")
+        .env("KEY", "value")
+        .working_dir("elsewhere")
+        .run();
+    run.code(3).stderr_is_empty();
+    assert_eq!(run.file("out.txt"), "x");
+}
+```
+
+A program that hangs is killed by a watchdog and reported as a failure.
+
+**`tests/programs/`** needs no Rust. Drop in `<name>.psl` and `<name>.expected`,
+or a directory holding `main.psl`, `expected`, and whatever it imports. `#`
+directives at the top of the entry file set everything else:
+
+```psl
+# ARGS: --mode fast input.txt
+# STDIN: 10
+# STDIN: 20
+# EXIT: 1
+# STDERR: Division by zero
+DISPLAY(TONUM(INPUT()) + TONUM(INPUT()))
+```
+
 ## Build / CI Pipeline
 
-CI is defined in `.github/workflows/build.yml`. On every push it runs tests on Linux and macOS, then builds these targets in parallel:
+CI is defined in `.github/workflows/build.yml`. On every push:
+
+1. **Lint** -- `cargo fmt --check`, then `cargo clippy --all-targets --all-features -- -D warnings`
+2. **Test** -- `cargo test` on `ubuntu-latest`, `macos-15` and `windows-latest`
+3. **Check (WebAssembly)** -- `cargo check` for `wasm32-unknown-unknown` and `wasm32-wasip1`
+
+Then it builds these targets in parallel:
 
 1. **Windows** (`x86_64-pc-windows-gnu`) -- cross-compiled, plus NSIS installer
 2. **Linux** (`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`) -- cross-compiled, plus `.deb` packages
@@ -123,7 +199,9 @@ Pushing a `vX.Y.Z` tag triggers a GitHub Release with all artifacts attached.
 
 [Pseudolang.md](Pseudolang.md) contains a full explanation of Collegeboard's Pseudocode and many features specific to PseudoLang.
 
-The file `src/tests/mod.rs` also contains various unit tests (examples of code) for PseudoLang.
+`src/tests/` holds the language test suite, and `tests/programs/` holds runnable
+example programs with their expected output -- both double as worked examples. See
+[Testing](#testing).
 
 ## To-do
 
@@ -134,20 +212,20 @@ The file `src/tests/mod.rs` also contains various unit tests (examples of code) 
 
 - [x] Dictionaries
 - [ ] Networking
-- [ ] File IO
-- [ ] System integration (terminal commands, process management, environment variables)
-- [ ] Library support (remote procedures)
+- [x] File IO
+- [x] System integration (terminal commands, process management, environment variables)
+- [x] Library support (multi-file programs, procedures from other files)
 - [ ] Graphics
-- [ ] Meta programming
+- [x] Meta programming
 - [ ] Multithreading
 - [ ] Bundled compiler
 - [ ] Dunder info like python
-- [ ] Env information
+- [x] Env information
 
 <details>
 <summary>Misc</summary>
 
-- [ ] Testing for INPUT and SLEEP (mocking framework)
+- [x] Testing for INPUT and SLEEP (process-level integration harness)
 - [ ] More escape characters
 
 </details>

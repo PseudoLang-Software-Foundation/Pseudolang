@@ -14,7 +14,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 # A case also keeps the lists visibly used, which a table of `CAT_*` variables
 # read through indirect expansion does not (shellcheck SC2034). To add a
 # keyword, put it in the relevant branch below.
-CATEGORIES="control constant operator math list dict string io other"
+CATEGORIES="control constant operator math list dict string io file system meta other"
 
 # Return the category a keyword belongs to, or "other" if it is unknown.
 category_of() {
@@ -43,6 +43,21 @@ category_of() {
     ;;
   DISPLAY | DISPLAYINLINE | INPUT | TOSTRING | TONUM | EXIT | SLEEP | TIME | TIMESTAMP | TIMEZONE | TIMEZONES | MILLITIME | EVAL | HASARG | GETARG)
     printf 'io'
+    ;;
+  READFILE | READLINES | WRITEFILE | APPENDFILE | FILEEXISTS | FILESIZE | FILEMTIME | DELETEFILE | DELETEDIR | DELETETREE | \
+    LISTDIR | MAKEDIR | RENAME | COPYFILE | \
+    ISFILE | ISDIR | JOINPATH | BASENAME | DIRNAME | EXTENSION | ABSPATH | REALPATH | \
+    CWD | CHDIR | TEMPDIR | HOMEDIR | CONFIGDIR | CACHEDIR | DATADIR)
+    printf 'file'
+    ;;
+  GETENV | SETENV | UNSETENV | ENVVARS | EXEC | SHELL | WHICH | PID | KILL | PROCESSINFO | PROCESSES | \
+    PLATFORM | ARCH | OSFAMILY | OSNAME | OSVERSION | KERNELVERSION | HOSTNAME | USERNAME | VERSION | \
+    CPUCOUNT | PHYSICALCPUS | TOTALMEMORY | USEDMEMORY | UPTIME | SYSINFO)
+    printf 'system'
+    ;;
+  TYPEOF | EXECUTE | ISDEFINED | GETVAR | SETVAR | UNSETVAR | VARIABLES | PROCEDURES | CALL | \
+    SCRIPTPATH | ISMAIN | MODULES)
+    printf 'meta'
     ;;
   *)
     printf 'other'
@@ -161,7 +176,7 @@ if [[ -n "$(bucket operator)" ]]; then
   cat >> "$OUTPUT" << EOF
         {
             "comment": "Operators",
-            "match": "(<-|\\\\+|-|\\\\*|/|=|NOT=|>=|<=|>|<|$(bucket operator))",
+            "match": "(<-|\\\\+|-|\\\\*|/|=|NOT=|>=|<=|>|<|\\\\b(?:$(bucket operator))\\\\b)",
             "name": "keyword.operator.pseudolang"
         },
 EOF
@@ -218,6 +233,39 @@ if [[ -n "$(bucket io)" ]]; then
             "comment": "IO and utility functions",
             "match": "\\\\b($(bucket io))\\\\b",
             "name": "support.function.io.pseudolang"
+        },
+EOF
+fi
+
+# File IO functions
+if [[ -n "$(bucket file)" ]]; then
+  cat >> "$OUTPUT" << EOF
+        {
+            "comment": "File IO functions",
+            "match": "\\\\b($(bucket file))\\\\b",
+            "name": "support.function.file.pseudolang"
+        },
+EOF
+fi
+
+# System integration functions
+if [[ -n "$(bucket system)" ]]; then
+  cat >> "$OUTPUT" << EOF
+        {
+            "comment": "System integration functions",
+            "match": "\\\\b($(bucket system))\\\\b",
+            "name": "support.function.system.pseudolang"
+        },
+EOF
+fi
+
+# Meta programming and module functions
+if [[ -n "$(bucket meta)" ]]; then
+  cat >> "$OUTPUT" << EOF
+        {
+            "comment": "Meta programming and module functions",
+            "match": "\\\\b($(bucket meta))\\\\b",
+            "name": "support.function.meta.pseudolang"
         },
 EOF
 fi
