@@ -1,0 +1,5 @@
+IMPORT "table.psl"
+PROCEDURE shout(s)
+{
+    RETURN UPPERCASE(s)
+}

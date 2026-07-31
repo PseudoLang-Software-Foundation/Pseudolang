@@ -1,0 +1,9 @@
+# STDIN: 10
+# STDIN: 20
+# STDIN: 12
+total <- 0
+REPEAT 3 TIMES
+{
+    total <- total + TONUM(INPUT())
+}
+DISPLAY(total)

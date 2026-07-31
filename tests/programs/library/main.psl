@@ -1,0 +1,7 @@
+# A library that finds its own data file, plus an ISMAIN guard that stays quiet.
+IMPORT "lib/table.psl"
+DISPLAY(shoutrows())
+DISPLAY(LENGTH(rows()))
+DISPLAY(ISMAIN())
+DISPLAY(BASENAME(SCRIPTPATH()))
+DISPLAY(LENGTH(MODULES()))

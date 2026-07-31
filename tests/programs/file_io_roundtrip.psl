@@ -1,0 +1,19 @@
+# A full read/write/append/inspect cycle against the working directory.
+MAKEDIR("data")
+WRITEFILE(JOINPATH("data", "notes.txt"), "alpha\nbeta\n")
+APPENDFILE(JOINPATH("data", "notes.txt"), "gamma\n")
+
+lines <- READLINES(JOINPATH("data", "notes.txt"))
+DISPLAY(LENGTH(lines))
+DISPLAY(lines)
+DISPLAY(lines[2])
+DISPLAY(FILEEXISTS(JOINPATH("data", "notes.txt")))
+DISPLAY(FILESIZE(JOINPATH("data", "notes.txt")))
+DISPLAY(CONTAINS(LISTDIR("data"), "notes.txt"))
+
+n <- COPYFILE(JOINPATH("data", "notes.txt"), JOINPATH("data", "copy.txt"))
+DISPLAY(n)
+RENAME(JOINPATH("data", "copy.txt"), JOINPATH("data", "moved.txt"))
+DISPLAY(CONTAINS(LISTDIR("data"), "moved.txt"))
+DELETEFILE(JOINPATH("data", "moved.txt"))
+DISPLAY(CONTAINS(LISTDIR("data"), "moved.txt"))

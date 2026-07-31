@@ -1,0 +1,5 @@
+# EXIT: 1
+# STDERR: Division by zero
+DISPLAY("printed before the failure")
+x <- 1 / 0
+DISPLAY("never printed")

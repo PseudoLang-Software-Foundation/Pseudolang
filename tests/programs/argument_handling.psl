@@ -1,0 +1,8 @@
+# ARGS: --mode fast -n 3 input.txt
+DISPLAY(ARGCOUNT)
+DISPLAY(POSITIONALS)
+DISPLAY(GETARG("mode"))
+DISPLAY(GETARG("n"))
+DISPLAY(HASARG("mode"))
+DISPLAY(HASARG("missing"))
+DISPLAY(GETARG("missing", "default"))

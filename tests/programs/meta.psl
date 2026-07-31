@@ -1,0 +1,23 @@
+# Type inspection, generated code and name-based access.
+DISPLAY(TYPEOF(1))
+DISPLAY(TYPEOF(1.5))
+DISPLAY(TYPEOF("s"))
+DISPLAY(TYPEOF(TRUE))
+DISPLAY(TYPEOF([1]))
+DISPLAY(TYPEOF({"a": 1}))
+DISPLAY(TYPEOF(NULL))
+DISPLAY(TYPEOF(NAN))
+
+EXECUTE("PROCEDURE tripled(n)" + "\n" + "{" + "\n" + "RETURN n * 3" + "\n" + "}")
+DISPLAY(tripled(14))
+DISPLAY(CONTAINS(PROCEDURES(), "tripled"))
+DISPLAY(CALL("tripled", [5]))
+
+SETVAR("dynamic", 7)
+DISPLAY(dynamic)
+DISPLAY(GETVAR("dynamic"))
+DISPLAY(GETVAR("absent", "fallback"))
+DISPLAY(ISDEFINED("dynamic"))
+DISPLAY(UNSETVAR("dynamic"))
+DISPLAY(ISDEFINED("dynamic"))
+DISPLAY(CONTAINS(VARIABLES(), "ARGS"))

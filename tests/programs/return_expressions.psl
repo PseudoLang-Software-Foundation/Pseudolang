@@ -1,0 +1,32 @@
+# Every RETURN form that used to hand back nothing at all.
+PROCEDURE joined(a, b)
+{
+    RETURN CONCAT(a, b)
+}
+PROCEDURE sliced(s)
+{
+    RETURN SUBSTRING(s, 2, 4)
+}
+PROCEDURE nothing()
+{
+    RETURN NULL
+}
+PROCEDURE formatted(v)
+{
+    RETURN f"got {v}"
+}
+PROCEDURE evaluated()
+{
+    RETURN EVAL("6 * 7")
+}
+PROCEDURE multiline()
+{
+    RETURN """first
+second"""
+}
+DISPLAY(joined("x", "y"))
+DISPLAY(sliced("abcdef"))
+DISPLAY(TYPEOF(nothing()))
+DISPLAY(formatted(3))
+DISPLAY(evaluated())
+DISPLAY(multiline())

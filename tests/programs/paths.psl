@@ -1,0 +1,13 @@
+# Path decomposition, asserted without naming a separator so it holds on Windows.
+p <- JOINPATH("one", "two", "three.tar.gz")
+DISPLAY(BASENAME(p))
+DISPLAY(BASENAME(DIRNAME(p)))
+DISPLAY(BASENAME(DIRNAME(DIRNAME(p))))
+DISPLAY(EXTENSION(p))
+DISPLAY(EXTENSION("plain"))
+DISPLAY(DIRNAME("plain"))
+DISPLAY(BASENAME("plain"))
+DISPLAY(ISDIR(CWD()))
+DISPLAY(ISFILE(CWD()))
+DISPLAY(BASENAME(ABSPATH("relative.txt")))
+DISPLAY(ISDIR(TEMPDIR()))

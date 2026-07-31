@@ -1,0 +1,21 @@
+IMPORT "strings.psl"
+
+PROCEDURE rows()
+{
+    RETURN READLINES(JOINPATH(DIRNAME(SCRIPTPATH()), "rows.txt"))
+}
+
+PROCEDURE shoutrows()
+{
+    out <- []
+    FOR EACH r IN rows()
+    {
+        APPEND(out, shout(r))
+    }
+    RETURN out
+}
+
+IF ISMAIN()
+{
+    DISPLAY("table.psl self-test should not run when imported")
+}

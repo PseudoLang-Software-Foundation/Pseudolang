@@ -1,0 +1,17 @@
+# Indexing applied to calls, literals and built-in results.
+PROCEDURE grid()
+{
+    RETURN [[1, 2], [3, 4]]
+}
+DISPLAY(grid()[1][2])
+DISPLAY(grid()[2][1])
+DISPLAY(SPLIT("a,b,c", ",")[2])
+DISPLAY(RANGE(5, 9)[3])
+DISPLAY(SORT([3, 1, 2])[1])
+DISPLAY("hello"[1])
+DISPLAY([9, 8, 7][2])
+DISPLAY([[1, 2], [3, 4]][2][1])
+DISPLAY({"k": [9, 8]}["k"][2])
+xs <- [4, 5, 6]
+DISPLAY((xs)[2])
+DISPLAY(grid()[1][1] + grid()[2][2])
